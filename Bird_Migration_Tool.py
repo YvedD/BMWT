@@ -358,7 +358,7 @@ with tabs[0]: #dit is het meest linkse tabblad
                 # Gebruik st.markdown voor inline weergave en st.code voor kopieerbare tekst
                 st.code(regel, language="text")  # Zorg ervoor dat elke regel apart gekopieerd kan worden
 with tabs[1]:
-    col1, col2 = st.columns([0.55,0.45)
+    col1, col2 = st.columns([0.55,0.45])
     # Zorg ervoor dat latitude, longitude, en timezone zijn gedefinieerd, bijvoorbeeld:
     latitude = 52.3794  # Vervang door je latitude waarde
     longitude = 4.9009  # Vervang door je longitude waarde
