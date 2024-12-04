@@ -28,7 +28,7 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # Configuratie voor API headers
 API_HEADERS = {
-    "User-Agent": "Bird Migration Tool (contact: ydsdsy@gmail.com)",  # Pas hier je contactgegevens aan
+    "User-Agent": "Bird Migration Weather Tool (contact: ydsdsy@gmail.com)",  # Pas hier je contactgegevens aan
     "From": "ydsdsu@gmail.com"  # Dit geeft aan wie contact kan worden opgenomen
 }
 
@@ -104,7 +104,7 @@ def kmh_naar_beaufort(kmh):
     grenzen = [1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118]
     for i, grens in enumerate(grenzen):
         if kmh <= grens:
-            return f"{i}Bf"
+            return f"{i}"
     return "12Bf"
 
 # Functie om geolocatie op te zoeken
@@ -358,7 +358,7 @@ with tabs[0]: #dit is het meest linkse tabblad
                 # Gebruik st.markdown voor inline weergave en st.code voor kopieerbare tekst
                 st.code(regel, language="text")  # Zorg ervoor dat elke regel apart gekopieerd kan worden
 with tabs[1]:
-    col1, col2 = st.columns([0.5,0.5])
+    col1, col2 = st.columns([0.6,0.4])
     # Zorg ervoor dat latitude, longitude, en timezone zijn gedefinieerd, bijvoorbeeld:
     latitude = 52.3794  # Vervang door je latitude waarde
     longitude = 4.9009  # Vervang door je longitude waarde
