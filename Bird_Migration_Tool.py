@@ -8,24 +8,27 @@ from datetime import date, datetime
 from dateutil.parser import parse
 import pytz
 
+# Verberg het Streamlit menu en footer via CSS
+hide_menu_style = """
+    <style>
+    /* Verberg het Streamlit menu rechtsboven */
+    #MainMenu {visibility: hidden;}
+    
+    /* Verberg het "Made with Streamlit" footer element */
+    footer {visibility: hidden;}
+
+    /* Verberg de hamburger menu knop in de mobiele weergave */
+    .css-1d391kg {visibility: hidden;}
+    </style>
+"""
+st.markdown(hide_menu_style, unsafe_allow_html=True)
+
 st.set_page_config(
     page_title="Bird Migration Weather Tool",
     page_icon='images//Milvus1.png',  # Emoji of pad naar icoon
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-hide_menu_style = """
-    <style>
-    /* Verberg het Streamlit menu rechtsboven */
-    #MainMenu {visibility: hidden;}
-
-    /* Optioneel: Verberg het 'Made with Streamlit' footer element */
-    footer {visibility: hidden;}
-    </style>
-"""
-st.markdown(hide_menu_style, unsafe_allow_html=True)
-
 
 # Configuratie voor API headers
 API_HEADERS = {
