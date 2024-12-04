@@ -14,13 +14,23 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
 # Verberg het Streamlit menu en footer via CSS
 hide_menu_style = """
     <style>
     /* Verberg het Streamlit menu rechtsboven */
     #MainMenu {visibility: hidden;}
-    
+
+    /* Maak een onzichtbaar masker boven het menu zodat het lijkt alsof het menu verdwenen is */
+    #MainMenu + div {
+        position: absolute;
+        width: 100%;
+        height: 50px; /* De hoogte van het menu */
+        top: 0;
+        left: 0;
+        background-color: transparent;
+        z-index: 1000;
+    }
+
     /* Verberg het "Made with Streamlit" footer element */
     footer {visibility: hidden;}
 
@@ -29,6 +39,7 @@ hide_menu_style = """
     </style>
 """
 st.markdown(hide_menu_style, unsafe_allow_html=True)
+
 
 # Configuratie voor API headers
 API_HEADERS = {
