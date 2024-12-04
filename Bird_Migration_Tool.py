@@ -15,13 +15,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS om menu en footer te verbergen
 hide_menu_style = """
     <style>
-    # MainMenu {visibility: hidden;}  /* Verberg het menu */
-    footer {visibility: hidden;}     /* Verberg de footer */
+    /* Verberg het Streamlit menu rechtsboven */
+    #MainMenu {visibility: hidden;}
+
+    /* Optioneel: Verberg het 'Made with Streamlit' footer element */
+    footer {visibility: hidden;}
     </style>
 """
+st.markdown(hide_menu_style, unsafe_allow_html=True)
+
 
 # Configuratie voor API headers
 API_HEADERS = {
