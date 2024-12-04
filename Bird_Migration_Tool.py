@@ -71,7 +71,7 @@ default_end=(18)
 # Sidebar configuratie
 land_keuze = st.sidebar.selectbox("Land", eu_landen, index=eu_landen.index(default_land))
 locatie_keuze = st.sidebar.text_input("Locatie", value=default_locatie)
-geselecteerde_datum = st.sidebar.date_input("Datum:", value=default_datum, min_value=date(2000, 1, 1))
+geselecteerde_datum = st.sidebar.date_input("Datum (vandaag of eerder !):", value=default_datum, min_value=date(2000, 1, 1))
 
 # Functie om de uitvoer te formatteren met SVG
 def format_regel_with_svg(time, temp, precip, cloud, cloud_low, cloud_mid, cloud_high, wind_dir, wind_speed_10m, wind_speed_80m, wind_speed_120m, wind_speed_180m, visibility, wind_direction_deg):
