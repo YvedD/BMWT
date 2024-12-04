@@ -8,6 +8,13 @@ from datetime import date, datetime
 from dateutil.parser import parse
 import pytz
 
+st.set_page_config(
+    page_title="Bird Migration Weather Tool",
+    page_icon='images//Milvus1.png',  # Emoji of pad naar icoon
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # Verberg het Streamlit menu en footer via CSS
 hide_menu_style = """
     <style>
@@ -22,13 +29,6 @@ hide_menu_style = """
     </style>
 """
 st.markdown(hide_menu_style, unsafe_allow_html=True)
-
-st.set_page_config(
-    page_title="Bird Migration Weather Tool",
-    page_icon='images//Milvus1.png',  # Emoji of pad naar icoon
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Configuratie voor API headers
 API_HEADERS = {
