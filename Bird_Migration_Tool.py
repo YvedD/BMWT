@@ -10,7 +10,7 @@ import pytz
 
 st.set_page_config(
     page_title="Bird Migration Weather Tool",
-    page_icon='images\Milvus1.png',  # Emoji of pad naar icoon
+    page_icon='images/Milvus1.png',  # Emoji of pad naar icoon
     layout="wide",
     initial_sidebar_state="expanded"
 )
