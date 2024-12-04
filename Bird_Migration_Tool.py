@@ -14,20 +14,21 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-# Verberg het Streamlit menu en footer via CSS
+
+# Verberg het Streamlit menu rechtsboven
 hide_menu_style = """
     <style>
     /* Verberg het Streamlit menu rechtsboven */
     #MainMenu {visibility: hidden;}
 
-    /* Maak een onzichtbaar masker boven het menu zodat het lijkt alsof het menu verdwenen is */
+    /* Plaats een onzichtbaar blok boven het menu zodat het lijkt alsof het menu verdwenen is */
     #MainMenu + div {
         position: absolute;
         width: 100%;
         height: 50px; /* De hoogte van het menu */
         top: 0;
         left: 0;
-        background-color: transparent;
+        background-color: white;  /* Gebruik een witte kleur om het menu te bedekken */
         z-index: 1000;
     }
 
