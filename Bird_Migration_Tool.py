@@ -598,7 +598,7 @@ with tabs[4]:
     st.header("Trektellen.nl (read only)")
     st.components.v1.iframe(
         "https://www.trektellen.nl",  # URL van de externe website
-        width=1000,  # Breedte van de iframe
+        width=1100,  # Breedte van de iframe
         height=2000  # Hoogte van de iframe
     )
 
