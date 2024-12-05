@@ -243,7 +243,7 @@ if "gps_format" in st.session_state:
             # Voeg de marker toe aan de kaart
             marker1 = folium.Marker(
                 location=[st.session_state.lat, st.session_state.lon],
-                icon=eagle_icon, icon_anchor=(12.5, 38)
+                icon=eagle_icon, icon_anchor=(12.5, 38),
                 popup=locatie_keuze
             ).add_to(m)
 
