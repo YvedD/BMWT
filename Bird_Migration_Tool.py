@@ -264,7 +264,7 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 
 
 # Hoofdvenster met tabbladen
-tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "BIRDTAM project"])
+tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "BIRDTAM project, "CRANE Radar project"])
 
 # Functie voor het weergeven van de regels in een mooi formaat (zonder SVG, enkel tekst en iconen)
 def format_regel_with_icons(time, temperature, precipitation, cloud_cover, cloud_cover_low, cloud_cover_mid, cloud_cover_high, wind_direction, wind_speed_10m, wind_speed_80m, wind_speed_120m, wind_speed_180m, visibility):
@@ -593,4 +593,12 @@ with tabs[3]:
         width=1000,  # Breedte van de iframe
         height=2000  # Hoogte van de iframe
     )
+
+#with tabs[4]:
+#    st.header("CRANE Radar profiles project")
+#    st.components.v1.iframe(
+#        "https://www.flysafe-birdtam.eu/profiles.html",  # URL van de externe website
+#        width=1000,  # Breedte van de iframe
+#        height=2000  # Hoogte van de iframe
+#    )
 
