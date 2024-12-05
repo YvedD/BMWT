@@ -237,7 +237,7 @@ if "gps_format" in st.session_state:
             #    icon=Icon(icon="fa-binoculars", prefix='fa', color='green', icon_color='white')
             #    # Font Awesome 'binoculars' icoon
             # Gebruik een aangepaste afbeelding als icoon
-            icon_path = 'images//Milvus1.png'  # Vervang dit door een URL of pad naar jouw afbeelding
+            icon_path = 'images//Milvus2.png'  # Vervang dit door een URL of pad naar jouw afbeelding
             eagle_icon = folium.CustomIcon(icon_path, icon_size=(25, 38))
 
             # Voeg de marker toe aan de kaart
