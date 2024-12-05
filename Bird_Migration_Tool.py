@@ -264,7 +264,7 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 
 
 # Hoofdvenster met tabbladen
-tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)"])
+tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "BIRDTAM project", "Trektellen.nl (read only), "Gebruiksaanwijzing"])
 
 # Functie voor het weergeven van de regels in een mooi formaat (zonder SVG, enkel tekst en iconen)
 def format_regel_with_icons(time, temperature, precipitation, cloud_cover, cloud_cover_low, cloud_cover_mid, cloud_cover_high, wind_direction, wind_speed_10m, wind_speed_80m, wind_speed_120m, wind_speed_180m, visibility):
@@ -602,3 +602,24 @@ with tabs[4]:
         height=2500  # Hoogte van de iframe
     )
 
+with tabs[5]:
+    st.header("Handleiding")
+    # Eenvoudige handleiding
+    st.text("""
+        Handleiding voor deze applicatie:
+
+        1. Kies een land en een locatie via de sideba, een geldige locatie is een stad of een gemeente, vergelijkbaar met de opzoekmogelijkheden in bijvoorbeeld google maps.
+        2. Selecteer een datum voor het opvragen van historische weergegevens, dit kan vanaf vandaag tot 1 jaar terug.
+        3. Gebruik de slider in de sidebar om het begin en start uur van de waarnemingen te filteren.
+        4. Bekijk de weersgegevens in het tabblad "Weergegevens", hier kan je kiezen om de gegevens "regel per regel" te kopiëren of als "1 blok" te kopiëren (manueel kopiëren werkt ook d.m.v. sleepbeweging.
+           Deze gegevens zijn reeds zo opgemaakt dat ze zonder tussenstap via kopiëren/plakken in het vak "Opmerkingen weer" kunnen geplakt worden in de website van trektellen.nl.
+        5. In het tabblad "Voorspellingen" kan je de weersverwachtingen vnden voor het gekozen land en locatie. Je kan deze gegevens ook downloaden als een .CSV bestand voor verwerking in bijvoorbeeld Excel.
+           Bovenaan de voorspellingen kan je eenvoudig kiezen welke voorspellingen je wenst te zien.
+           Naast de kolom met de voorspellingen kan je ook een kaart van het gekozen land en locatie raadplegen via een aantal (uit te schakelen) layers.
+        6. In de andere tabbladen kom je terecht op een aantal bekende, belangrijke, informatieplatformen zoals het CROW project en BIRDTAM project waar de dichtheden van migratiestromen weergegeven worden.
+           Uiteraard kan je in deze context ook terecht op de webpagina van Trektellen.nl, echter kan je geen gegevens wijzigen op deze site, het weergeven van trektellen.nl is hier puur informatief bedoeld.
+        7. Voor meldingen, opmerkingen en vragen kan je terecht via mail :""")
+        # Een mailto-link toevoegen
+        st.markdown("""
+            Als je vragen hebt, neem dan contact met ons op via [e-mail](mailto:ydsdsy@gmail.com).
+            """)
