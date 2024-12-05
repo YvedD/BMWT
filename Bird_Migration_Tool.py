@@ -264,7 +264,7 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 
 
 # Hoofdvenster met tabbladen
-tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "BIRDTAM project", "Trektellen.nl (read only), "Gebruiksaanwijzing"])
+tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Gebruiksaanwijzing"])
 
 # Functie voor het weergeven van de regels in een mooi formaat (zonder SVG, enkel tekst en iconen)
 def format_regel_with_icons(time, temperature, precipitation, cloud_cover, cloud_cover_low, cloud_cover_mid, cloud_cover_high, wind_direction, wind_speed_10m, wind_speed_80m, wind_speed_120m, wind_speed_180m, visibility):
