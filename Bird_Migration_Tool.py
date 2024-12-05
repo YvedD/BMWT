@@ -264,7 +264,7 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 
 
 # Hoofdvenster met tabbladen
-tabs = st.tabs(["Weergegevens", "Voorspellingen", "Under construction", "To be done later"])
+tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "To be done later"])
 
 # Functie voor het weergeven van de regels in een mooi formaat (zonder SVG, enkel tekst en iconen)
 def format_regel_with_icons(time, temperature, precipitation, cloud_cover, cloud_cover_low, cloud_cover_mid, cloud_cover_high, wind_direction, wind_speed_10m, wind_speed_80m, wind_speed_120m, wind_speed_180m, visibility):
@@ -579,4 +579,11 @@ with tabs[1]:
         # Render de kaart in Streamlit
         st_folium(forecastmap, width=600, height=600)
 
-#with tabs[2]:
+with tabs[2]:
+    st.header("CROW project")
+    st.components.v1.iframe(
+        "https://www.meteo.be/services/birdDetection/#/",  # URL van de externe website
+        width=800,  # Breedte van de iframe
+        height=600  # Hoogte van de iframe
+    )
+
