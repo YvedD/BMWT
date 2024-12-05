@@ -552,12 +552,12 @@ with tabs[1]:
 
         # Gebruik een aangepaste afbeelding als icoon
         icon_path = 'images/Milvus1.png'  # Vervang dit door een URL of pad naar jouw afbeelding
-        custom_icon = folium.CustomIcon(icon_path, icon_size=(50, 75))
+        custom_icon = folium.CustomIcon(icon_path, icon_size=(25, 38))
 
         # Voeg de marker toe aan de kaart
         folium.Marker(
             location=[st.session_state.lat, st.session_state.lon],
-            icon=custom_icon,
+            icon=custom_icon, icon_anchor=(12.5, 38),
             popup=locatie_keuze
         ).add_to(forecastmap)
 
