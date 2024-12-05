@@ -542,7 +542,7 @@ with tabs[1]:
         folium.TileLayer(
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='Map data © Esri',
-            name='Satellietbeeld',
+            name='Satellietbeeld (40%)',
             show=False,
             overlay=True,
             control=True,
