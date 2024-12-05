@@ -608,7 +608,7 @@ with tabs[5]:
     st.text("""
         Handleiding voor deze applicatie:
 
-        1. Kies een land en een locatie via de sideba, een geldige locatie is een stad of een gemeente, vergelijkbaar met de opzoekmogelijkheden in bijvoorbeeld google maps.
+        1. Kies een land en een locatie via de sidebar, een geldige locatie is een stad of een gemeente, vergelijkbaar met de opzoekmogelijkheden in bijvoorbeeld google maps.
         2. Selecteer een datum voor het opvragen van historische weergegevens, dit kan vanaf vandaag tot 1 jaar terug.
         3. Gebruik de slider in de sidebar om het begin en start uur van de waarnemingen te filteren.
         4. Bekijk de weersgegevens in het tabblad "Weergegevens", hier kan je kiezen om de gegevens "regel per regel" te kopiëren of als "1 blok" te kopiëren (manueel kopiëren werkt ook d.m.v. sleepbeweging.
@@ -620,4 +620,4 @@ with tabs[5]:
            Uiteraard kan je in deze context ook terecht op de webpagina van Trektellen.nl, echter kan je geen gegevens wijzigen op deze site, het weergeven van trektellen.nl is hier puur informatief bedoeld.
         7. Voor meldingen, opmerkingen en vragen kan je terecht via mail :""")
         # Een mailto-link toevoegen
-    st.markdown("""Als je vragen hebt, neem dan contact met ons op via [e-mail](mailto:ydsdsy@gmail.com).""")
+    st.markdown("""Als je vragen hebt, neem dan contact met ons op via ydsdsy@gmail.com  [e-mail](mailto:ydsdsy@gmail.com).""")
