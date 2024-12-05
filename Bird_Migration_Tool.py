@@ -599,6 +599,6 @@ with tabs[4]:
     st.components.v1.iframe(
         "https://www.trektellen.nl",  # URL van de externe website
         width=1100,  # Breedte van de iframe
-        height=2000  # Hoogte van de iframe
+        height=2500  # Hoogte van de iframe
     )
 
