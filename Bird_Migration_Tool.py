@@ -358,14 +358,15 @@ with tabs[0]: #dit is het meest linkse tabblad
                 st.code(regel, language="text")  # Zorg ervoor dat elke regel apart gekopieerd kan worden
 with tabs[1]:
     col1, col2 = st.columns([0.55,0.45])
-    # Zorg ervoor dat de session state waarden bestaan
-    if "lat" not in st.session_state or "lon" not in st.session_state:
-        st.session_state.lat = 51.2349  # Standaard waarde
-        st.session_state.lon = 2.9756  # Standaard waarde
 
-    # Ophalen van opgeslagen waarden
-        latitude = st.session_state.lat
-        longitude = st.session_state.lon
+    # Controleer of sessiestatus waarden bevat
+    if "lat" not in st.session_state or "lon" not in st.session_state:
+        st.error("Latitude en Longitude zijn niet ingesteld. Stel eerst een locatie in.")
+        st.stop()  # Stop de app als de vereiste gegevens ontbreken
+
+    # Haal waarden op uit sessiestatus
+    latitude = st.session_state.lat
+    longitude = st.session_state.lon
 
     # API-aanroep voor weersvoorspellingen
     API_URL = (
@@ -375,7 +376,7 @@ with tabs[1]:
         "&hourly=temperature_2m,precipitation,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,"
         "visibility,wind_speed_10m,wind_speed_80m,wind_direction_10m"
         "&daily=sunrise,sunset"
-        f"&timezone=auto"
+        "&timezone=auto"
         "&past_days=0"
         "&forecast_days=7"
     )
