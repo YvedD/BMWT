@@ -359,15 +359,15 @@ with tabs[0]: #dit is het meest linkse tabblad
 with tabs[1]:
     col1, col2 = st.columns([0.55,0.45])
     # Zorg ervoor dat latitude, longitude, en timezone zijn gedefinieerd, bijvoorbeeld:
-    latitude = 52.3794  # Vervang door je latitude waarde
-    longitude = 4.9009  # Vervang door je longitude waarde
+    latitude = 70.05  # Vervang door je latitude waarde
+    longitude = 22.96  # Vervang door je longitude waarde
     local_timezone = pytz.timezone("Europe/Amsterdam")  # Gebruik de lokale tijdzone
 
     # API-aanroep voor weersvoorspellingen
     API_URL = (
         "https://api.open-meteo.com/v1/forecast"
-        f"?latitude=lat"
-        f"&longitude=lon"
+        f"?latitude={latitude}"
+        f"&longitude={longitude}"
         "&hourly=temperature_2m,precipitation,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,"
         "visibility,wind_speed_10m,wind_speed_80m,wind_direction_10m"
         "&daily=sunrise,sunset"
