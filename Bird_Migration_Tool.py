@@ -620,4 +620,4 @@ with tabs[5]:
            Uiteraard kan je in deze context ook terecht op de webpagina van Trektellen.nl, echter kan je geen gegevens wijzigen op deze site, het weergeven van trektellen.nl is hier puur informatief bedoeld.
         7. Voor meldingen, opmerkingen en vragen kan je terecht via mail :""")
         # Een mailto-link toevoegen
-    st.markdown("""Als je vragen hebt, neem dan contact met ons op via ydsdsy@gmail.com  [e-mail](mailto:ydsdsy@gmail.com).""")
+    st.markdown("""Als je vragen hebt, neem dan contact met ons op via ydsdsy@gmail.com""")
