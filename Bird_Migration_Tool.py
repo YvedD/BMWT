@@ -358,10 +358,14 @@ with tabs[0]: #dit is het meest linkse tabblad
                 st.code(regel, language="text")  # Zorg ervoor dat elke regel apart gekopieerd kan worden
 with tabs[1]:
     col1, col2 = st.columns([0.55,0.45])
-    # Zorg ervoor dat latitude, longitude, en timezone zijn gedefinieerd, bijvoorbeeld:
-    latitude = 70.05  # Vervang door je latitude waarde
-    longitude = 22.96  # Vervang door je longitude waarde
-    local_timezone = pytz.timezone("Europe/Amsterdam")  # Gebruik de lokale tijdzone
+    # Zorg ervoor dat de session state waarden bestaan
+    if "lat" not in st.session_state or "lon" not in st.session_state:
+        st.session_state.lat = 51.2349  # Standaard waarde
+        st.session_state.lon = 2.9756  # Standaard waarde
+
+    # Ophalen van opgeslagen waarden
+        latitude = st.session_state.lat
+        longitude = st.session_state.lon
 
     # API-aanroep voor weersvoorspellingen
     API_URL = (
@@ -376,6 +380,7 @@ with tabs[1]:
         "&forecast_days=7"
     )
 
+    st.write(f"API URL: {API_URL}")
 
     # Functie om de weerdata op te halen
     @st.cache_data
