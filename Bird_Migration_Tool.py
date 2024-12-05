@@ -256,7 +256,7 @@ if "gps_format" in st.session_state:
              st_folium(m, width=300, height=300)  # Pas grootte hier aan
 
 # Titel en beschrijving boven de tabbladen
-st.title("Bird Weather Migration Tool")
+st.title("Bird Migration Weather Tool")
 st.markdown("""
 Welkom bij het interactieve weergegevens dashboard. 
 Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar wens.
