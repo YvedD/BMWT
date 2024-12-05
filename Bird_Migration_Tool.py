@@ -272,7 +272,7 @@ def format_regel_with_icons(time, temperature, precipitation, cloud_cover, cloud
         f"🕒:{time:<4}|🌡️{temperature:>3.1f}°C|🌧️{precipitation:>2.1f}mm|"
         f"☁️L:{cloud_cover_low:>3}%|☁️M:{cloud_cover_mid:>3}%|☁️H:{cloud_cover_high:>3}%|☁️Tot.:{cloud_cover:>3}%|)"
         f"🧭:{wind_direction:<3}|💨@10m:{wind_speed_10m:>2}Bf|💨@80m:{wind_speed_80m:>2}Bf|"
-        f"💨@120m:{wind_speed_120m:>2}Bf|💨@180m:{wind_speed_180m:>2}Bf|👁️ {visibility:>3.1f}km"
+        f"💨@120m:{wind_speed_120m:>2}Bf|💨@180m:{wind_speed_180m:>2}Bf|👁️ {visibility:>4.1f}km"
     )
 
 # Tab 0: Weergeven van de gegevens
