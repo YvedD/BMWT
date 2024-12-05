@@ -271,7 +271,7 @@ def format_regel_with_icons(time, temperature, precipitation, cloud_cover, cloud
     return (
         f"🕒: {time:<5} | 🌡️ {temperature:>5.1f}°C | 🌧️ {precipitation:>5.1f}mm | ☁️ Tot.: {cloud_cover:>3}% | "
         f"(☁️ L: {cloud_cover_low:>3}% | ☁️ M: {cloud_cover_mid:>3}% | ☁️ H: {cloud_cover_high:>3}%) "
-        f"🧭: {wind_direction:<2} | 💨 @10m: {wind_speed_10m:>2}Bf | 💨 @80m: {wind_speed_80m:>2}Bf | "
+        f"🧭: {wind_direction:<3} | 💨 @10m: {wind_speed_10m:>2}Bf | 💨 @80m: {wind_speed_80m:>2}Bf | "
         f"💨 @120m: {wind_speed_120m:>2}Bf | 💨 @180m: {wind_speed_180m:>2}Bf | 👁️ {visibility:>6.1f}km"
     )
 
