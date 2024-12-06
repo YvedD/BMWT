@@ -381,7 +381,7 @@ with tabs[1]:
         "&forecast_days=7"
     )
 
-    st.write(f"API URL: {API_URL}")
+    #st.write(f"API URL: {API_URL}")
 
     # Functie om de weerdata op te halen
     @st.cache_data
