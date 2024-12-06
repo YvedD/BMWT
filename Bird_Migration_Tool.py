@@ -118,7 +118,7 @@ def toon_geolocatie_op_kaart(locatie):
         return None, None, None
 
 # Functie om weergegevens op te halen
-@st.cache_data
+#@st.cache_data
 def get_weather_data_historical(lat, lon, selected_date):
     url = f"https://historical-forecast-api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&start_date={selected_date}&end_date={selected_date}&hourly=temperature_2m,precipitation,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility,wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_180m&daily=sunrise,sunset&timezone=auto&models=best_match"
     response = requests.get(url, headers=API_HEADERS)
@@ -384,7 +384,7 @@ with tabs[1]:
     #st.write(f"API URL: {API_URL}")
 
     # Functie om de weerdata op te halen
-    @st.cache_data
+    #@st.cache_data
     def get_weather_data_forecast():
         response = requests.get(API_URL)
         if response.status_code == 200:
