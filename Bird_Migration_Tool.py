@@ -15,18 +15,23 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Injecteer CSS om het menu en de footer te verbergen
-hide_streamlit_style = """
+# Verberg de 'Manage App' link met behulp van een CSS en JavaScript hack
+st.markdown("""
     <style>
-        # MainMenu {visibility: hidden;} /* Verberg het menu rechtsboven */
-        footer {visibility: hidden;}    /* Verberg de footer onderaan */
-        footer:before {
-            content: ' ' !important;
-        header {visibility: hidden;}    /* Optioneel: verberg de header */
+        /* Verberg de footer van Streamlit (inclusief de Manage App link) */
+        footer {visibility: hidden;}
     </style>
-"""
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-
+    <script>
+        // Verberg de 'Manage App' link, specifiek voor de Streamlit footer
+        const observer = new MutationObserver(() => {
+            const footer = document.querySelector('footer');
+            if (footer) {
+                footer.style.display = 'none';
+            }
+        });
+        observer.observe(document, { childList: true, subtree: true });
+    </script>
+""", unsafe_allow_html=True)
 
 # Configuratie voor API headers
 API_HEADERS = {
