@@ -20,6 +20,8 @@ hide_streamlit_style = """
     <style>
         # MainMenu {visibility: hidden;} /* Verberg het menu rechtsboven */
         footer {visibility: hidden;}    /* Verberg de footer onderaan */
+        footer:before {
+            content: ' ' !important;
         header {visibility: hidden;}    /* Optioneel: verberg de header */
     </style>
 """
