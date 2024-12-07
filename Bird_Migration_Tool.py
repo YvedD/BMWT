@@ -485,9 +485,9 @@ with tabs[1]:
             def to_excel(ordered_df):
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                ordered_df.to_excel(writer, index=False, sheet_name='Weerdata')
-                processed_data = output.getvalue()
-                return processed_data
+                    ordered_df.to_excel(writer, index=False, sheet_name='Weerdata')
+                    processed_data = output.getvalue()
+                    return processed_data
 
             # Data als Excel
             excel_data = to_excel(ordered_df)
