@@ -481,13 +481,6 @@ with tabs[1]:
             else:
                 st.write("Selecteer ten minste één kolom om te tonen.")
 
-            # Voorbeeld dataframe (gebruik jouw eigen `ordered_df`)
-            ordered_df = pd.DataFrame({
-                "Datum": ["2024-12-01", "2024-12-02", "2024-12-03"],
-                "Temperatuur": [12, 14, 15],
-                "Neerslag": [0.0, 1.2, 0.8]
-            })
-
             # Functie om dataframe op te slaan als Excel
             def to_excel(df):
                 output = BytesIO()
