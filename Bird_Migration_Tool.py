@@ -481,24 +481,35 @@ with tabs[1]:
             else:
                 st.write("Selecteer ten minste één kolom om te tonen.")
 
+            # Voorbeeld dataframe (gebruik jouw eigen `ordered_df`)
+            ordered_df = pd.DataFrame({
+                "Datum": ["2024-12-01", "2024-12-02", "2024-12-03"],
+                "Temperatuur": [12, 14, 15],
+                "Neerslag": [0.0, 1.2, 0.8]
+            })
+
             # Functie om dataframe op te slaan als Excel
-            def to_excel(ordered_df):
+            def to_excel(df):
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    ordered_df.to_excel(writer, index=False, sheet_name='Weerdata')
-                    processed_data = output.getvalue()
-                    return processed_data
+                    df.to_excel(writer, index=False, sheet_name='Gegevens')
+                processed_data = output.getvalue()
+                return processed_data
 
-            # Data als Excel
-            excel_data = to_excel(ordered_df)
-
-            # Downloadknop voor Excel bestand
-            st.download_button(
-                label="Download als Excel",
-                data=excel_data,
-                file_name="weerdata.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            # Controleer of `ordered_df` niet leeg is
+            if not ordered_df.empty:
+                # Zet `ordered_df` om naar Excel
+                excel_data = to_excel(ordered_df)
+    
+                # Downloadknop voor Excel bestand
+                st.download_button(
+                    label="Download als Excel",
+                    data=excel_data,
+                    file_name="ordered_df.xlsx",  # Bestand krijgt een naam gebaseerd op jouw dataframe
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.write("Het dataframe `ordered_df` is leeg. Voeg data toe om te downloaden.")
 
 
     if 'lat' not in st.session_state or 'lon' not in st.session_state:
