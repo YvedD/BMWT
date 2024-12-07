@@ -491,17 +491,6 @@ with tabs[1]:
                 for day, group in ordered_df.groupby('Datum'):
                     st.write(f"### **{day}**")
                     st.dataframe(group.drop(columns='Datum'), use_container_width=True)
-
-                # Genereer CSV bestand
-                csv = ordered_df.to_csv(index=False)
-
-                # Downloadknop voor CSV bestand
-                st.download_button(
-                    label="Download als CSV",
-                    data=csv,
-                    file_name="weerdata.csv",
-                    mime="text/csv"
-                )
             else:
                 st.write("Selecteer ten minste één kolom om te tonen.")
 
