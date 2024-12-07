@@ -373,7 +373,7 @@ with tabs[0]: #dit is het meest linkse tabblad
     
             # Downloadknop voor Excel
             st.download_button(
-                label="Export als Excel",
+                label="Export Excel",
                 data=excel_data,
                 file_name="kopieerbare_regels.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -509,7 +509,7 @@ with tabs[1]:
     
                 # Downloadknop voor Excel bestand
                 st.download_button(
-                    label="Download als Excel",
+                    label="Export Excel",
                     data=excel_data,
                     file_name="ordered_df.xlsx",  # Bestand krijgt een naam gebaseerd op jouw dataframe
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
