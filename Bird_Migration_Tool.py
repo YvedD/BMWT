@@ -356,6 +356,29 @@ with tabs[0]: #dit is het meest linkse tabblad
             for regel in kopieerbare_regels:
                 # Gebruik st.markdown voor inline weergave en st.code voor kopieerbare tekst
                 st.code(regel, language="text")  # Zorg ervoor dat elke regel apart gekopieerd kan worden
+        # Voeg downloadfunctionaliteit toe
+        def to_excel(df):
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Filtered Data')
+            processed_data = output.getvalue()
+            return processed_data
+
+        # Controleer of gefilterde data niet leeg is
+        if not filtered_data.empty:
+            # Zet gefilterde data om naar Excel
+            excel_data = to_excel(filtered_data)
+    
+            # Voeg downloadknop toe
+            st.download_button(
+                label="Download gefilterde data als Excel",
+                data=excel_data,
+                file_name="filtered_data.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        else:
+            st.write("Er zijn geen gegevens om te downloaden.")
+
 with tabs[1]:
     col1, col2 = st.columns([0.55,0.45])
 
