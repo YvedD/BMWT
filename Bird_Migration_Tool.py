@@ -371,12 +371,12 @@ with tabs[0]: #dit is het meest linkse tabblad
                 # Exporteer de regels naar Excel
                 excel_data = regels_naar_excel(kopieerbare_regels)
     
-            # Downloadknop voor Excel
-            st.download_button(
-                label="Export als Excel",
-                data=excel_data,
-                file_name="kopieerbare_regels.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        # Downloadknop voor Excel
+        st.download_button(
+            label="Export als Excel",
+            data=excel_data,
+            file_name="kopieerbare_regels.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
             st.write("Geen regels beschikbaar om te exporteren.")
