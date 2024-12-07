@@ -7,6 +7,7 @@ import pandas as pd
 from datetime import date, datetime
 from dateutil.parser import parse
 import pytz
+from io import BytesIO
 
 st.set_page_config(
     page_title="Bird Migration Weather Tool",
@@ -480,7 +481,24 @@ with tabs[1]:
             else:
                 st.write("Selecteer ten minste één kolom om te tonen.")
 
+            # Functie om dataframe op te slaan als Excel
+            def to_excel(ordered_df):
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                ordered_df.to_excel(writer, index=False, sheet_name='Weerdata')
+                processed_data = output.getvalue()
+                return processed_data
 
+            # Data als Excel
+            excel_data = to_excel(ordered_df)
+
+            # Downloadknop voor Excel bestand
+            st.download_button(
+                label="Download als Excel",
+                data=excel_data,
+                file_name="weerdata.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
 
     if 'lat' not in st.session_state or 'lon' not in st.session_state:
