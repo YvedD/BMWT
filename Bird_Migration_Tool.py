@@ -360,16 +360,16 @@ with tabs[0]: #dit is het meest linkse tabblad
         def regels_naar_excel(regels):
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                # Splits regels op het pipe-teken en zet ze in kolommen
-                data = [regel.split("|") for regel in regels]  # Split op het pipe-teken
+                # Vervang "<br>" door een lege string en splits regels op het pipe-teken
+                data = [regel.replace("<br>", "").split("|") for regel in regels]  # Verwijder <br>
                 df = pd.DataFrame(data)  # Zet de gesplitste regels in een DataFrame
                 df.to_excel(writer, index=False, sheet_name='Kopieerbare Regels', header=False)
             return output.getvalue()
 
-        # Controleer of er regels zijn
-        if kopieerbare_regels:
-            # Exporteer de regels naar Excel
-            excel_data = regels_naar_excel(kopieerbare_regels)
+            # Controleer of er regels zijn
+            if kopieerbare_regels:
+                # Exporteer de regels naar Excel
+                excel_data = regels_naar_excel(kopieerbare_regels)
     
             # Downloadknop voor Excel
             st.download_button(
