@@ -357,13 +357,13 @@ with tabs[0]: #dit is het meest linkse tabblad
                 # Gebruik st.markdown voor inline weergave en st.code voor kopieerbare tekst
                 st.code(regel, language="text")  # Zorg ervoor dat elke regel apart gekopieerd kan worden
 
-        # Functie om kopieerbare regels naar Excel te exporteren
         def regels_naar_excel(regels):
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                # Zet de regels in een dataframe
-                df = pd.DataFrame({"Regels": regels})
-                df.to_excel(writer, index=False, sheet_name='Kopieerbare Regels')
+                # Splits regels op het pipe-teken en zet ze in kolommen
+                data = [regel.split("|") for regel in regels]  # Split op het pipe-teken
+                df = pd.DataFrame(data)  # Zet de gesplitste regels in een DataFrame
+                df.to_excel(writer, index=False, sheet_name='Kopieerbare Regels', header=False)
             return output.getvalue()
 
         # Controleer of er regels zijn
