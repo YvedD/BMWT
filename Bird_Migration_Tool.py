@@ -279,6 +279,19 @@ with tabs[0]: #dit is het meest linkse tabblad
         weather_df = pd.DataFrame(weather_data["hourly"])
         weather_df["time"] = weather_df["time"].str.split("T").str[1]
 
+        # Voeg een multiselect toe voor kolomselectie in het tabblad
+        st.write("### Selecteer de gegevens om weer te geven")
+        beschikbare_kolommen = list(weather_df.columns)  # Lijst van beschikbare kolommen
+        standaard_kolommen = ["time", "temperature_2m", "precipitation", "cloud_cover"]  # Default selectie
+        gekozen_kolommen = st.multiselect(
+            "Kies de gegevens om weer te geven en exporteren",
+            opties=beschikbare_kolommen,
+            default=standaard_kolommen
+        )
+
+
+        
+
         # Default slider range van 08:00 tot 18:00 uur
         default_start = 8  # 08:00 uur
         default_end = 18   # 18:00 uur
