@@ -299,7 +299,8 @@ with tabs[0]:  # Dit is het meest linkse tabblad
         gekozen_kolommen = st.multiselect(
             "Kies de gegevens om weer te geven en exporteren",
             opties=beschikbare_kolommen,
-            default=standaard_kolommen
+            default=standaard_kolommen,
+            key="kolom_selectie"
         )
 
         # Filter de gegevens op basis van de slider en gekozen kolommen
