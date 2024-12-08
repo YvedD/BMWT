@@ -30,7 +30,7 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 # Configuratie voor API headers
 API_HEADERS = {
     "User-Agent": "Bird Migration Weather Tool (contact: ydsdsy@gmail.com)",  # Pas hier je contactgegevens aan
-    "From": "ydsdsu@gmail.com"  # Dit geeft aan wie contact kan worden opgenomen
+    "From": "ydsdsy@gmail.com"  # Dit geeft aan wie contact kan worden opgenomen
 }
 
 # CSS toevoegen om de sidebar-breedte aan te passen
@@ -73,23 +73,6 @@ default_end=(18)
 land_keuze = st.sidebar.selectbox("Land", eu_landen, index=eu_landen.index(default_land))
 locatie_keuze = st.sidebar.text_input("Locatie", value=default_locatie)
 geselecteerde_datum = st.sidebar.date_input("Datum (vandaag of eerder !):", value=default_datum, min_value=date(2000, 1, 1))
-
-# Functie om de uitvoer te formatteren met SVG
-def format_regel_with_svg(time, temp, precip, cloud, cloud_low, cloud_mid, cloud_high, wind_dir, wind_speed_10m, wind_speed_80m, wind_speed_120m, wind_speed_180m, visibility, wind_direction_deg):
-    wind_icon_svg = create_wind_icon(wind_direction_deg)
-    regel = (
-        f"🕒:{time}: 🌡️:{temp:.1f}°C, 🌧️:{precip:.1f}mm, ☁️:{cloud:03}%, "
-        f"☁️L:{cloud_low:03}%, ☁️M:{cloud_mid:03}%, ☁️H:{cloud_high:03}%, "
-        f"🧭:{wind_dir}, 💨 @10m:{wind_speed_10m}, 💨 @80m:{wind_speed_80m}, "
-        f"💨 @120m:{wind_speed_120m}, 💨 @180m:{wind_speed_180m}, 👁️:{visibility:.1f}km"
-    )
-    regel_html = f"""
-    <div style="display: flex; align-items: center; margin-bottom: 5px;">
-        <span>{regel}</span>
-        <div style="margin-left: 10px;">{wind_icon_svg}</div>
-    </div>
-    """
-    return regel_html
 
 # Functie om graden naar windrichting te converteren
 def graden_naar_windrichting(graden):
@@ -150,26 +133,6 @@ def haal_zonsopgang_en_zonsondergang(weather_data):
     else:
         st.warning("Weergegevens ontbreken of zijn niet correct opgehaald.")
         return None, None
-
-def create_wind_icon(degree):
-    if degree is None:
-        return "N/B"
-
-    # Bereken de windrichting in graden voor de pijl (de pijl wijst de andere kant op, dus 180 graden verschuiven)
-    arrow_degree = (degree + 180) % 360
-
-    # SVG voor de pijl, gecentreerd in een box
-    arrow_svg = f"""
-    <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
-        <svg width="30" height="30" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <g transform="rotate({arrow_degree}, 50, 50)">
-                <polygon points="50,5 60,35 50,25 40,35" fill="blue"/>
-                <line x1="50" y1="25" x2="50" y2="85" stroke="blue" stroke-width="12"/>
-            </g>
-        </svg>
-    </div>
-    """
-    return arrow_svg
 
 # Controleer wijzigingen in invoer (gebruik session_state)
 if "last_locatie" not in st.session_state:
@@ -316,14 +279,8 @@ with tabs[0]: #dit is het meest linkse tabblad
 
 
         start_end = st.sidebar.slider("Selecteer het tijdsbereik", 0, 23, (default_start, default_end), format = "%d:00", key="sidebaronder")
-        #min_value = 0,
-        #max_value = 23,
-        #value = default_hours,
-        #format = "%d:00",
         st.sidebar.write(f"**{land}**, {stad}")
         st.sidebar.write(f"**GPS:** {st.session_state.gps_format}")
-        #st.sidebar.write(f"{lat}, {lon}")
-        #st.sidebar.write(f"{st.session_state.lat}, {st.session_state.lon}")
 
         # Filter de gegevens op basis van de slider
         filtered_data = weather_df.iloc[start_end[0]:start_end[1] + 1]
@@ -381,6 +338,9 @@ with tabs[0]: #dit is het meest linkse tabblad
             )
         else:
             st.write("Geen regels beschikbaar om te exporteren.")
+
+
+# hier de code voor het tweede tabblad (voorspellingen)
 with tabs[1]:
     col1, col2 = st.columns([0.55,0.45])
 
@@ -409,7 +369,6 @@ with tabs[1]:
     #st.write(f"API URL: {API_URL}")
 
     # Functie om de weerdata op te halen
-    #@st.cache_data
     def get_weather_data_forecast():
         response = requests.get(API_URL)
         if response.status_code == 200:
@@ -423,7 +382,6 @@ with tabs[1]:
     weather_data_forecast = get_weather_data_forecast()
 
     # Veronderstel dat we in tabblad2 zitten, met column1 zichtbaar
-    #tab2 = st.beta_expander("Tabblad 2: Weersvoorspellingen")  # Gebruik een expander voor tabblad2
     with col1:
         if weather_data_forecast:
             # Toon de dagelijkse voorspelling
