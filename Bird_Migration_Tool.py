@@ -285,8 +285,8 @@ with tabs[0]: #dit is het meest linkse tabblad
         standaard_kolommen = ["time", "temperature_2m", "precipitation", "cloud_cover"]  # Default selectie
         gekozen_kolommen = st.multiselect(
             "Kies de gegevens om weer te geven en exporteren",
-            opties=beschikbare_kolommen,
-            default=standaard_kolommen
+            beschikbare_kolommen,
+            standaard_kolommen
         )
 
 
