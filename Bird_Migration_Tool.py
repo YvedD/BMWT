@@ -329,44 +329,57 @@ with tabs[0]: #dit is het meest linkse tabblad
         filtered_data = weather_df.iloc[start_end[0]:start_end[1] + 1]
 
         # Pas de uitvoer aan op basis van geselecteerde kolommen
+        # Maak een lijst van de kopieerbare regels met alleen de geselecteerde kolommen
         kopieerbare_regels = []
         for _, row in filtered_data.iterrows():
-            # Tijd formatteren, alleen als 'time' is geselecteerd
-            tijd = pd.to_datetime(row['time'], format='%H:%M').strftime('%H:%M') if 'time' in gekozen_kolommen else "N/A"
+            # Verzamel alleen de geselecteerde kolommen voor de uitvoer
+            regel = []
+    
+            if 'time' in gekozen_kolommen:
+                regel.append(pd.to_datetime(row['time'], format='%H:%M').strftime('%H:%M'))
+    
+            if 'temperature_2m' in gekozen_kolommen:
+                regel.append(f"🌡️{row['temperature_2m']:.1f}°C")
+    
+            if 'precipitation' in gekozen_kolommen:
+                regel.append(f"🌧️{row['precipitation']:.1f}mm")
+    
+            if 'cloud_cover' in gekozen_kolommen:
+                regel.append(f"☁️Tot.:{row['cloud_cover']:.0f}%")
+    
+            if 'cloud_cover_low' in gekozen_kolommen:
+                regel.append(f"☁️L:{row['cloud_cover_low']:.0f}%")
+    
+            if 'cloud_cover_mid' in gekozen_kolommen:
+                regel.append(f"☁️M:{row['cloud_cover_mid']:.0f}%")
+    
+            if 'cloud_cover_high' in gekozen_kolommen:
+                regel.append(f"☁️H:{row['cloud_cover_high']:.0f}%")
+    
+            if 'wind_direction_10m' in gekozen_kolommen:
+                regel.append(f"🧭{graden_naar_windrichting(row['wind_direction_10m'])}")
+    
+            if 'wind_speed_10m' in gekozen_kolommen:
+                regel.append(f"💨10m:{kmh_naar_beaufort(row['wind_speed_10m']):.1f}Bft")
+    
+            if 'wind_speed_80m' in gekozen_kolommen:
+                regel.append(f"80m:{kmh_naar_beaufort(row['wind_speed_80m']):.1f}Bft")
+    
+            if 'wind_speed_120m' in gekozen_kolommen:
+                regel.append(f"120m:{kmh_naar_beaufort(row['wind_speed_120m']):.1f}Bft")
+    
+            if 'wind_speed_180m' in gekozen_kolommen:
+                regel.append(f"180m:{kmh_naar_beaufort(row['wind_speed_180m']):.1f}Bft")
+    
+            if 'visibility' in gekozen_kolommen:
+                regel.append(f"👁️{row['visibility'] / 1000:.1f}km")
 
-            # Andere kolommen controleren en standaardwaarden instellen
-            temperatuur = row['temperature_2m'] if 'temperature_2m' in gekozen_kolommen else None
-            neerslag = row['precipitation'] if 'precipitation' in gekozen_kolommen else None
-            bewolking = row['cloud_cover'] if 'cloud_cover' in gekozen_kolommen else None
-            lage_bewolking = row['cloud_cover_low'] if 'cloud_cover_low' in gekozen_kolommen else None
-            middel_bewolking = row['cloud_cover_mid'] if 'cloud_cover_mid' in gekozen_kolommen else None
-            hoge_bewolking = row['cloud_cover_high'] if 'cloud_cover_high' in gekozen_kolommen else None
-            windrichting = graden_naar_windrichting(row['wind_direction_10m']) if 'wind_direction_10m' in gekozen_kolommen else "N/A"
-            wind_snelheid_10m = kmh_naar_beaufort(row['wind_speed_10m']) if 'wind_speed_10m' in gekozen_kolommen else None
-            wind_snelheid_80m = kmh_naar_beaufort(row['wind_speed_80m']) if 'wind_speed_80m' in gekozen_kolommen else None
-            wind_snelheid_120m = kmh_naar_beaufort(row['wind_speed_120m']) if 'wind_speed_120m' in gekozen_kolommen else None
-            wind_snelheid_180m = kmh_naar_beaufort(row['wind_speed_180m']) if 'wind_speed_180m' in gekozen_kolommen else None
-            zichtbaarheid = row['visibility'] / 1000 if 'visibility' in gekozen_kolommen else None
+            # Voeg de regel alleen toe als er gegevens zijn om weer te geven
+            if regel:
+                kopieerbare_regels.append(" | ".join(regel))        
 
-            # Format de regel met standaardwaarden als nodig
-            kopieerbare_regels.append(
-                format_regel_with_icons(
-                    tijd,
-                    temperatuur or 0.0,  # Gebruik 0.0 als fallback voor numerieke velden
-                    neerslag or 0.0,
-                    bewolking or 0.0,
-                    lage_bewolking or 0.0,
-                    middel_bewolking or 0.0,
-                    hoge_bewolking or 0.0,
-                    windrichting,
-                    wind_snelheid_10m or 0.0,
-                    wind_snelheid_80m or 0.0,
-                    wind_snelheid_120m or 0.0,
-                    wind_snelheid_180m or 0.0,
-                    zichtbaarheid or 0.0,
-                )
-            )
-        # Gebruiker kiest hoe gegevens worden gekopieerd
+
+# Gebruiker kiest hoe gegevens worden gekopieerd
         kopieer_optie = st.radio("Hoe wil je de gegevens kopiëren?", ["Alles in één blok", "Regel per regel"])
 
         if kopieer_optie == "Alles in één blok":
