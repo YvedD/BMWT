@@ -493,6 +493,7 @@ with tabs[0]:  # Dit is het meest linkse tabblad
         st.session_state.lat = 52.3794  # Standaard locatie, pas aan naar jouw wensen
         st.session_state.lon = 4.9009  # Standaard locatie, pas aan naar jouw wensen
 
+ with tabs[1]:  # Dit is het 2de tabblad
     # Gebruik de tweede kolom in Streamlit
     with col2:
         # Maak de kaart
