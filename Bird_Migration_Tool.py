@@ -328,55 +328,65 @@ with tabs[0]: #dit is het meest linkse tabblad
         # Filter de gegevens op basis van de slider
         filtered_data = weather_df.iloc[start_end[0]:start_end[1] + 1]
 
-        # Pas de uitvoer aan op basis van geselecteerde kolommen
-        # Maak een lijst van de kopieerbare regels met alleen de geselecteerde kolommen
-        kopieerbare_regels = []
-        for _, row in filtered_data.iterrows():
-            # Verzamel alleen de geselecteerde kolommen voor de uitvoer
-            regel = []
+# Maak een lijst van de kopieerbare regels met alleen de geselecteerde kolommen
+kopieerbare_regels = []
+for _, row in filtered_data.iterrows():
+    # Verzamel alleen de geselecteerde kolommen voor de uitvoer
+    regel = []
     
-            if 'time' in gekozen_kolommen:
-                regel.append(pd.to_datetime(row['time'], format='%H:%M').strftime('%H:%M'))
+    if 'time' in gekozen_kolommen:
+        regel.append(pd.to_datetime(row['time'], format='%H:%M').strftime('%H:%M'))
     
-            if 'temperature_2m' in gekozen_kolommen:
-                regel.append(f"🌡️{row['temperature_2m']:.1f}°C")
+    if 'temperature_2m' in gekozen_kolommen:
+        temperatuur = pd.to_numeric(row['temperature_2m'], errors='coerce')  # Forceer numerieke waarde
+        regel.append(f"🌡️{temperatuur:.1f}°C" if pd.notna(temperatuur) else "🌡️N/A")
     
-            if 'precipitation' in gekozen_kolommen:
-                regel.append(f"🌧️{row['precipitation']:.1f}mm")
+    if 'precipitation' in gekozen_kolommen:
+        precipitation = pd.to_numeric(row['precipitation'], errors='coerce')
+        regel.append(f"🌧️{precipitation:.1f}mm" if pd.notna(precipitation) else "🌧️N/A")
     
-            if 'cloud_cover' in gekozen_kolommen:
-                regel.append(f"☁️Tot.:{row['cloud_cover']:.0f}%")
+    if 'cloud_cover' in gekozen_kolommen:
+        cloud_cover = pd.to_numeric(row['cloud_cover'], errors='coerce')
+        regel.append(f"☁️Tot.:{cloud_cover:.0f}%" if pd.notna(cloud_cover) else "☁️Tot.:N/A")
     
-            if 'cloud_cover_low' in gekozen_kolommen:
-                regel.append(f"☁️L:{row['cloud_cover_low']:.0f}%")
+    if 'cloud_cover_low' in gekozen_kolommen:
+        cloud_cover_low = pd.to_numeric(row['cloud_cover_low'], errors='coerce')
+        regel.append(f"☁️L:{cloud_cover_low:.0f}%" if pd.notna(cloud_cover_low) else "☁️L:N/A")
     
-            if 'cloud_cover_mid' in gekozen_kolommen:
-                regel.append(f"☁️M:{row['cloud_cover_mid']:.0f}%")
+    if 'cloud_cover_mid' in gekozen_kolommen:
+        cloud_cover_mid = pd.to_numeric(row['cloud_cover_mid'], errors='coerce')
+        regel.append(f"☁️M:{cloud_cover_mid:.0f}%" if pd.notna(cloud_cover_mid) else "☁️M:N/A")
     
-            if 'cloud_cover_high' in gekozen_kolommen:
-                regel.append(f"☁️H:{row['cloud_cover_high']:.0f}%")
+    if 'cloud_cover_high' in gekozen_kolommen:
+        cloud_cover_high = pd.to_numeric(row['cloud_cover_high'], errors='coerce')
+        regel.append(f"☁️H:{cloud_cover_high:.0f}%" if pd.notna(cloud_cover_high) else "☁️H:N/A")
     
-            if 'wind_direction_10m' in gekozen_kolommen:
-                regel.append(f"🧭{graden_naar_windrichting(row['wind_direction_10m'])}")
+    if 'wind_direction_10m' in gekozen_kolommen:
+        regel.append(f"🧭{graden_naar_windrichting(row['wind_direction_10m'])}")
     
-            if 'wind_speed_10m' in gekozen_kolommen:
-                regel.append(f"💨10m:{kmh_naar_beaufort(row['wind_speed_10m']):.1f}Bft")
+    if 'wind_speed_10m' in gekozen_kolommen:
+        wind_speed_10m = pd.to_numeric(row['wind_speed_10m'], errors='coerce')
+        regel.append(f"💨10m:{kmh_naar_beaufort(wind_speed_10m):.1f}Bft" if pd.notna(wind_speed_10m) else "💨10m:N/A")
     
-            if 'wind_speed_80m' in gekozen_kolommen:
-                regel.append(f"80m:{kmh_naar_beaufort(row['wind_speed_80m']):.1f}Bft")
+    if 'wind_speed_80m' in gekozen_kolommen:
+        wind_speed_80m = pd.to_numeric(row['wind_speed_80m'], errors='coerce')
+        regel.append(f"80m:{kmh_naar_beaufort(wind_speed_80m):.1f}Bft" if pd.notna(wind_speed_80m) else "80m:N/A")
     
-            if 'wind_speed_120m' in gekozen_kolommen:
-                regel.append(f"120m:{kmh_naar_beaufort(row['wind_speed_120m']):.1f}Bft")
+    if 'wind_speed_120m' in gekozen_kolommen:
+        wind_speed_120m = pd.to_numeric(row['wind_speed_120m'], errors='coerce')
+        regel.append(f"120m:{kmh_naar_beaufort(wind_speed_120m):.1f}Bft" if pd.notna(wind_speed_120m) else "120m:N/A")
     
-            if 'wind_speed_180m' in gekozen_kolommen:
-                regel.append(f"180m:{kmh_naar_beaufort(row['wind_speed_180m']):.1f}Bft")
+    if 'wind_speed_180m' in gekozen_kolommen:
+        wind_speed_180m = pd.to_numeric(row['wind_speed_180m'], errors='coerce')
+        regel.append(f"180m:{kmh_naar_beaufort(wind_speed_180m):.1f}Bft" if pd.notna(wind_speed_180m) else "180m:N/A")
     
-            if 'visibility' in gekozen_kolommen:
-                regel.append(f"👁️{row['visibility'] / 1000:.1f}km")
+    if 'visibility' in gekozen_kolommen:
+        visibility = pd.to_numeric(row['visibility'], errors='coerce')
+        regel.append(f"👁️{visibility / 1000:.1f}km" if pd.notna(visibility) else "👁️N/A")
 
-            # Voeg de regel alleen toe als er gegevens zijn om weer te geven
-            if regel:
-                kopieerbare_regels.append(" | ".join(regel))        
+    # Voeg de regel alleen toe als er gegevens zijn om weer te geven
+    if regel:
+        kopieerbare_regels.append(" | ".join(regel))
 
 
 # Gebruiker kiest hoe gegevens worden gekopieerd
