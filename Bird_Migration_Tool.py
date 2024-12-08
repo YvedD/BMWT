@@ -337,7 +337,7 @@ with tabs[0]: #dit is het meest linkse tabblad
             # Andere kolommen controleren en toevoegen
             temperatuur = row['temperature_2m'] if 'temperature_2m' in gekozen_kolommen else None
             neerslag = row['precipitation'] if 'precipitation' in gekozen_kolommen else None
-            bewolking = row['cloud_cover'] if 'cloud_cover' in gekozen_kolommen else None
+            #bewolking = row['cloud_cover'] if 'cloud_cover' in gekozen_kolommen else None
             lage_bewolking = row['cloud_cover_low'] if 'cloud_cover_low' in gekozen_kolommen else None
             middel_bewolking = row['cloud_cover_mid'] if 'cloud_cover_mid' in gekozen_kolommen else None
             hoge_bewolking = row['cloud_cover_high'] if 'cloud_cover_high' in gekozen_kolommen else None
@@ -345,7 +345,7 @@ with tabs[0]: #dit is het meest linkse tabblad
             wind_snelheid_10m = kmh_naar_beaufort(row['wind_speed_10m']) if 'wind_speed_10m' in gekozen_kolommen else None
             wind_snelheid_80m = kmh_naar_beaufort(row['wind_speed_80m']) if 'wind_speed_80m' in gekozen_kolommen else None
             wind_snelheid_120m = kmh_naar_beaufort(row['wind_speed_120m']) if 'wind_speed_120m' in gekozen_kolommen else None
-            wind_snelheid_180m = kmh_naar_beaufort(row['wind_speed_180m']) if 'wind_speed_180m' in gekozen_kolommen else None
+            #wind_snelheid_180m = kmh_naar_beaufort(row['wind_speed_180m']) if 'wind_speed_180m' in gekozen_kolommen else None
             zichtbaarheid = row['visibility'] / 1000 if 'visibility' in gekozen_kolommen else None
 
             # Format de regel alleen met de geselecteerde kolommen
