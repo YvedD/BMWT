@@ -143,6 +143,7 @@ def format_regel_with_icons(time, temperature, precipitation, cloud_cover, cloud
         f"💨@120m:{wind_speed_120m:>2}Bf|👁️ {visibility:>4.1f}km"                                 #|💨@180m:{wind_speed_180m:>2}Bf
     )
 
+# Functie voor het genereren van excel uitvoer
 def regels_naar_excel(regels):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -151,6 +152,23 @@ def regels_naar_excel(regels):
         df = pd.DataFrame(data)  # Zet de gesplitste regels in een DataFrame
         df.to_excel(writer, index=False, sheet_name='Kopieerbare Regels', header=False)
         return output.getvalue()
+
+# Functie om de weerdata op te halen
+def get_weather_data_forecast():
+    response = requests.get(API_URL)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.error(f"Error fetching data from API: {response.status_code}")
+        return None
+
+# Functie om dataframe op te slaan als Excel
+def to_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Gegevens')
+        processed_data = output.getvalue()
+        return processed_data
 
 
 
@@ -372,14 +390,6 @@ with tabs[1]:
 
     #st.write(f"API URL: {API_URL}")
 
-    # Functie om de weerdata op te halen
-    def get_weather_data_forecast():
-        response = requests.get(API_URL)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            st.error(f"Error fetching data from API: {response.status_code}")
-            return None
 
 
     # Haal de weerdata op
@@ -457,13 +467,6 @@ with tabs[1]:
             else:
                 st.write("Selecteer ten minste één kolom om te tonen.")
 
-            # Functie om dataframe op te slaan als Excel
-            def to_excel(df):
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name='Gegevens')
-                processed_data = output.getvalue()
-                return processed_data
 
             # Controleer of `ordered_df` niet leeg is
             if not ordered_df.empty:
