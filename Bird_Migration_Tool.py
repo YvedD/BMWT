@@ -134,6 +134,26 @@ def haal_zonsopgang_en_zonsondergang(weather_data):
         st.warning("Weergegevens ontbreken of zijn niet correct opgehaald.")
         return None, None
 
+# Functie voor het weergeven van de regels in een mooi formaat (zonder SVG, enkel tekst en iconen)
+def format_regel_with_icons(time, temperature, precipitation, cloud_cover, cloud_cover_low, cloud_cover_mid, cloud_cover_high, wind_direction, wind_speed_10m, wind_speed_80m, wind_speed_120m, wind_speed_180m, visibility):
+    return (
+        f"<br>🕒:{time:<4}|🌡️{temperature:>3.1f}°C|🌧️{precipitation:>2.1f}mm|"
+        f"☁️L:{cloud_cover_low:>3}%|☁️M:{cloud_cover_mid:>3}%|☁️H:{cloud_cover_high:>3}%|"        #☁️Tot.:{cloud_cover:>3}%|)"
+        f"🧭:{wind_direction:<3}|💨@10m:{wind_speed_10m:>2}Bf|💨@80m:{wind_speed_80m:>2}Bf|"
+        f"💨@120m:{wind_speed_120m:>2}Bf|👁️ {visibility:>4.1f}km"                                 #|💨@180m:{wind_speed_180m:>2}Bf
+    )
+
+def regels_naar_excel(regels):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        # Vervang "<br>" door een lege string en splits regels op het pipe-teken
+        data = [regel.replace("<br>", "").split("|") for regel in regels]  # Verwijder <br>
+        df = pd.DataFrame(data)  # Zet de gesplitste regels in een DataFrame
+        df.to_excel(writer, index=False, sheet_name='Kopieerbare Regels', header=False)
+        return output.getvalue()
+
+
+
 # Controleer wijzigingen in invoer (gebruik session_state)
 if "last_locatie" not in st.session_state:
     st.session_state.last_locatie = default_locatie
@@ -230,14 +250,6 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 # Hoofdvenster met tabbladen
 tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Gebruiksaanwijzing"])
 
-# Functie voor het weergeven van de regels in een mooi formaat (zonder SVG, enkel tekst en iconen)
-def format_regel_with_icons(time, temperature, precipitation, cloud_cover, cloud_cover_low, cloud_cover_mid, cloud_cover_high, wind_direction, wind_speed_10m, wind_speed_80m, wind_speed_120m, wind_speed_180m, visibility):
-    return (
-        f"<br>🕒:{time:<4}|🌡️{temperature:>3.1f}°C|🌧️{precipitation:>2.1f}mm|"
-        f"☁️L:{cloud_cover_low:>3}%|☁️M:{cloud_cover_mid:>3}%|☁️H:{cloud_cover_high:>3}%|"        #☁️Tot.:{cloud_cover:>3}%|)"
-        f"🧭:{wind_direction:<3}|💨@10m:{wind_speed_10m:>2}Bf|💨@80m:{wind_speed_80m:>2}Bf|"
-        f"💨@120m:{wind_speed_120m:>2}Bf|👁️ {visibility:>4.1f}km"                                 #|💨@180m:{wind_speed_180m:>2}Bf
-    )
 
 # Tab 0: Weergeven van de gegevens
 with tabs[0]: #dit is het meest linkse tabblad
@@ -315,14 +327,6 @@ with tabs[0]: #dit is het meest linkse tabblad
                 # Gebruik st.markdown voor inline weergave en st.code voor kopieerbare tekst
                 st.code(regel, language="text")  # Zorg ervoor dat elke regel apart gekopieerd kan worden
 
-        def regels_naar_excel(regels):
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                # Vervang "<br>" door een lege string en splits regels op het pipe-teken
-                data = [regel.replace("<br>", "").split("|") for regel in regels]  # Verwijder <br>
-                df = pd.DataFrame(data)  # Zet de gesplitste regels in een DataFrame
-                df.to_excel(writer, index=False, sheet_name='Kopieerbare Regels', header=False)
-            return output.getvalue()
 
         # Controleer of er regels zijn
         if kopieerbare_regels:
