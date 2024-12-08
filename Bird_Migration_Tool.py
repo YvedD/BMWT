@@ -276,7 +276,7 @@ def format_regel_with_icons(time, temperature, precipitation, cloud_cover, cloud
     )
 
 # Tab 0: Weergeven van de gegevens
-with tabs[0]: #dit is het meest linkse tabblad
+with tabs[0]:  # Dit is het meest linkse tabblad
     # Data ophalen en verwerken
     if "weather_data" in st.session_state:
         weather_data = st.session_state.weather_data
@@ -288,60 +288,32 @@ with tabs[0]: #dit is het meest linkse tabblad
         # Default slider range van 08:00 tot 18:00 uur
         default_start = 8  # 08:00 uur
         default_end = 18   # 18:00 uur
-        if "last_hours" not in st.session_state:
-            st.session_state.last_hours = default_hours  # Zorg ervoor dat er altijd een standaardwaarde is
-        # Verkrijg het tijdsbereik van de slider in de sidebar (default tussen 08:00 en 18:00 uur)
 
-        # Controleer of de sliderwaarden van start_end veranderd zijn
-        if (
-                locatie_keuze != st.session_state.last_locatie
-                or geselecteerde_datum != st.session_state.last_datum
-                or default_hours != st.session_state.last_hours
-        ):
-            lat, lon, adres = toon_geolocatie_op_kaart(f"{locatie_keuze}, {land_keuze}")
-            if lat and lon:
-                gps_format = f"{round(lat, 2)}°{'N' if lat >= 0 else 'S'} {round(lon, 2)}°{'E' if lon >= 0 else 'W'}"
-                weather_data = get_weather_data_historical(lat, lon, geselecteerde_datum)
+        # Verkrijg het tijdsbereik van de slider
+        start_end = st.slider("Selecteer het tijdsbereik", 0, 23, (default_start, default_end), format="%d:00")
 
-                # Update de session_state met de nieuwe waarden
-                st.session_state.last_locatie = locatie_keuze
-                st.session_state.last_datum = geselecteerde_datum
-                st.session_state.last_hours = start_end
-                st.session_state.weather_data = weather_data
-                st.session_state.lat = lat
-                st.session_state.lon = lon
-                st.session_state.adres = adres
-                st.session_state.gps_format = gps_format
+        # Voeg een multiselect toe voor kolomselectie in het tabblad
+        st.write("### Selecteer de gegevens om weer te geven")
+        beschikbare_kolommen = list(weather_df.columns)  # Lijst van beschikbare kolommen
+        standaard_kolommen = ["time", "temperature_2m", "precipitation", "cloud_cover"]  # Default selectie
+        gekozen_kolommen = st.multiselect(
+            "Kies de gegevens om weer te geven en exporteren",
+            opties=beschikbare_kolommen,
+            default=standaard_kolommen
+        )
 
+        # Filter de gegevens op basis van de slider en gekozen kolommen
+        filtered_data = weather_df.iloc[start_end[0]:start_end[1] + 1, :][gekozen_kolommen]
 
-        start_end = st.sidebar.slider("Selecteer het tijdsbereik", 0, 23, (default_start, default_end), format = "%d:00", key="sidebaronder")
-        #min_value = 0,
-        #max_value = 23,
-        #value = default_hours,
-        #format = "%d:00",
-        st.sidebar.write(f"**{land}**, {stad}")
-        st.sidebar.write(f"**GPS:** {st.session_state.gps_format}")
-        #st.sidebar.write(f"{lat}, {lon}")
-        #st.sidebar.write(f"{st.session_state.lat}, {st.session_state.lon}")
-
-        # Filter de gegevens op basis van de slider
-        filtered_data = weather_df.iloc[start_end[0]:start_end[1] + 1]
-
-        # Maak een lijst van de kopieerbare regels
+        # Maak kopieerbare regels alleen voor de gekozen kolommen
         kopieerbare_regels = [
-            format_regel_with_icons(
-                pd.to_datetime(row['time'], format='%H:%M').strftime('%H:%M'),
-                row['temperature_2m'], row['precipitation'], row['cloud_cover'],
-                row['cloud_cover_low'], row['cloud_cover_mid'], row['cloud_cover_high'],
-                graden_naar_windrichting(row['wind_direction_10m']),
-                kmh_naar_beaufort(row['wind_speed_10m']),
-                kmh_naar_beaufort(row['wind_speed_80m']),
-                kmh_naar_beaufort(row['wind_speed_120m']),
-                kmh_naar_beaufort(row['wind_speed_180m']),
-                row['visibility'] / 1000
-            )
+            "|".join(str(row[col]) for col in gekozen_kolommen)
             for _, row in filtered_data.iterrows()
         ]
+
+        # Toon de gefilterde gegevens in een tabel
+        st.write("### Gefilterde gegevens")
+        st.dataframe(filtered_data)
 
         # Gebruiker kiest hoe gegevens worden gekopieerd
         kopieer_optie = st.radio("Hoe wil je de gegevens kopiëren?", ["Alles in één blok", "Regel per regel"])
@@ -349,28 +321,28 @@ with tabs[0]: #dit is het meest linkse tabblad
         if kopieer_optie == "Alles in één blok":
             # Combineer alle regels in één tekstblok en toon het als code
             alle_regels_text = "\n".join(kopieerbare_regels)
-            st.code(alle_regels_text, language="text")  # Gebruik st.code() voor kopieerbare tekst
+            st.code(alle_regels_text, language="text")
 
         elif kopieer_optie == "Regel per regel":
             # Toon elke regel apart zonder extra ruimte
             for regel in kopieerbare_regels:
-                # Gebruik st.markdown voor inline weergave en st.code voor kopieerbare tekst
-                st.code(regel, language="text")  # Zorg ervoor dat elke regel apart gekopieerd kan worden
+                st.code(regel, language="text")
 
-        def regels_naar_excel(regels):
+        # Functie om de regels naar Excel te exporteren
+        def regels_naar_excel(regels, kolommen):
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                # Vervang "<br>" door een lege string en splits regels op het pipe-teken
-                data = [regel.replace("<br>", "").split("|") for regel in regels]  # Verwijder <br>
-                df = pd.DataFrame(data)  # Zet de gesplitste regels in een DataFrame
-                df.to_excel(writer, index=False, sheet_name='Kopieerbare Regels', header=False)
+                # Zet de regels in een DataFrame met de gekozen kolommen
+                data = [regel.split("|") for regel in regels]
+                df = pd.DataFrame(data, columns=kolommen)
+                df.to_excel(writer, index=False, sheet_name='Kopieerbare Regels')
             return output.getvalue()
 
         # Controleer of er regels zijn
         if kopieerbare_regels:
             # Exporteer de regels naar Excel
-            excel_data = regels_naar_excel(kopieerbare_regels)
-    
+            excel_data = regels_naar_excel(kopieerbare_regels, gekozen_kolommen)
+
             # Downloadknop voor Excel
             st.download_button(
                 label="Export Excel",
@@ -379,8 +351,7 @@ with tabs[0]: #dit is het meest linkse tabblad
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            st.write("Geen regels beschikbaar om te exporteren.")
-with tabs[1]:
+            st.write("Geen regels beschikbaar om te exporteren.")with tabs[1]:
     col1, col2 = st.columns([0.55,0.45])
 
     # Controleer of sessiestatus waarden bevat
