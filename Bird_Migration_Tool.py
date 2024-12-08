@@ -351,7 +351,7 @@ with tabs[0]:  # Dit is het meest linkse tabblad
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            st.write("Geen regels beschikbaar om te exporteren.")with tabs[1]:
+            st.write("Geen regels beschikbaar om te exporteren.")
 
 with tabs[1]:  # Dit is het 2de tabblad
     col1, col2 = st.columns([0.55,0.45])
