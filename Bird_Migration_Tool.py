@@ -352,6 +352,8 @@ with tabs[0]:  # Dit is het meest linkse tabblad
             )
         else:
             st.write("Geen regels beschikbaar om te exporteren.")with tabs[1]:
+
+with tabs[1]:  # Dit is het 2de tabblad
     col1, col2 = st.columns([0.55,0.45])
 
     # Controleer of sessiestatus waarden bevat
@@ -493,7 +495,6 @@ with tabs[0]:  # Dit is het meest linkse tabblad
         st.session_state.lat = 52.3794  # Standaard locatie, pas aan naar jouw wensen
         st.session_state.lon = 4.9009  # Standaard locatie, pas aan naar jouw wensen
 
- with tabs[1]:  # Dit is het 2de tabblad
     # Gebruik de tweede kolom in Streamlit
     with col2:
         # Maak de kaart
