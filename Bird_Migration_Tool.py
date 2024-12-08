@@ -266,7 +266,7 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 
 
 # Hoofdvenster met tabbladen
-tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Gebruiksaanwijzing"])
+tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Crane Radar", "Gebruiksaanwijzing"])
 
 
 # Tab 0: Weergeven van de gegevens
@@ -617,6 +617,14 @@ with tabs[4]:
     )
 
 with tabs[5]:
+    st.header("Kraanvogel radar)")
+    st.components.v1.iframe(
+        "https://analytical.sensingclues.org/cranes/",  # URL van de externe website
+        width=1100,  # Breedte van de iframe
+        height=2500  # Hoogte van de iframe
+    )
+
+with tabs[6]:
     st.header("Handleiding")
     # Eenvoudige handleiding
     st.text("""
