@@ -9,6 +9,8 @@ from datetime import date, datetime
 from dateutil.parser import parse
 import pytz
 from io import BytesIO
+import time
+from geopy.exc import GeocoderUnavailable
 
 st.set_page_config(
     page_title="Bird Migration Weather Tool",
@@ -93,13 +95,19 @@ def kmh_naar_beaufort(kmh):
 
 # Functie om geolocatie op te zoeken
 def toon_geolocatie_op_kaart(locatie):
-    geolocator = Nominatim(user_agent="weather_app")  # Geen language hier in constructor
-    locatie_data = geolocator.geocode(locatie, exactly_one=True, language="en")  # Taal instellen op Engels
-    if locatie_data:
-        return locatie_data.latitude, locatie_data.longitude, locatie_data.address
-    else:
-        st.error(f"De locatie {locatie} kan niet gevonden worden.")
+    geolocator = Nominatim(user_agent="weather_app")
+    try:
+        locatie_data = geolocator.geocode(locatie, exactly_one=True, language="en")
+        if locatie_data:
+            return locatie_data.latitude, locatie_data.longitude, locatie_data.address
+        else:
+            st.error(f"De locatie {locatie} kan niet gevonden worden.")
+            return None, None, None
+    except GeocoderUnavailable:
+        st.error(f"De geolocator is momenteel niet beschikbaar. Probeer het later opnieuw.")
+        time.sleep(1)  # Voeg een korte vertraging toe tussen verzoeken
         return None, None, None
+
 
 # Functie om weergegevens op te halen
 #@st.cache_data
