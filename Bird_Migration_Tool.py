@@ -1,6 +1,6 @@
 
 import streamlit as st
-from geopy.geocoders import Nominatim
+from geopy.geocoders import Nominatim, OpenCage
 import folium
 import requests
 from streamlit_folium import st_folium
@@ -95,19 +95,33 @@ def kmh_naar_beaufort(kmh):
 
 # Functie om geolocatie op te zoeken
 def toon_geolocatie_op_kaart(locatie):
-    geolocator = Nominatim(user_agent="weather_app")
+    # Probeer eerst Nominatim
+    geolocator_nominatim = Nominatim(user_agent="weather_app")
     try:
-        locatie_data = geolocator.geocode(locatie, exactly_one=True, language="en")
+        locatie_data = geolocator_nominatim.geocode(locatie, exactly_one=True, language="en")
         if locatie_data:
             return locatie_data.latitude, locatie_data.longitude, locatie_data.address
         else:
             st.error(f"De locatie {locatie} kan niet gevonden worden.")
             return None, None, None
     except GeocoderUnavailable:
-        st.error(f"De geolocator is momenteel niet beschikbaar. Probeer het later opnieuw.")
-        time.sleep(1)  # Voeg een korte vertraging toe tussen verzoeken
-        return None, None, None
-
+        # Als Nominatim niet beschikbaar is, probeer OpenCage
+        st.warning("Nominatim is niet beschikbaar, overschakelen naar OpenCage...")
+        
+        geolocator_opencage = OpenCage(api_key="YOUR_OPENCAGE_API_KEY")
+        try:
+            locatie_data = geolocator_opencage.geocode(locatie, exactly_one=True, language="en")
+            if locatie_data:
+                return locatie_data.latitude, locatie_data.longitude, locatie_data.address
+            else:
+                st.error(f"De locatie {locatie} kan niet gevonden worden in OpenCage.")
+                return None, None, None
+        except GeocoderUnavailable:
+            st.error("OpenCage is ook niet beschikbaar. Probeer het later opnieuw.")
+            return None, None, None
+        except Exception as e:
+            st.error(f"Er is een onverwachte fout opgetreden: {e}")
+            return None, None, None
 
 # Functie om weergegevens op te halen
 #@st.cache_data
