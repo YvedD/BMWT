@@ -96,7 +96,7 @@ def kmh_naar_beaufort(kmh):
 # Functie om geolocatie op te zoeken
 def toon_geolocatie_op_kaart(locatie):
     # Probeer eerst Nominatim
-    geolocator_nominatim = Nominatim(user_agent="weather_app")
+    geolocator_nominatim = Nominatim(user_agent="Bird_Migration_Weather_Tool")
     try:
         locatie_data = geolocator_nominatim.geocode(locatie, exactly_one=True, language="en")
         if locatie_data:
