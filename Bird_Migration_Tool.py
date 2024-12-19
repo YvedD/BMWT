@@ -108,7 +108,7 @@ def toon_geolocatie_op_kaart(locatie):
         # Als Nominatim niet beschikbaar is, probeer OpenCage
         st.warning("Nominatim is niet beschikbaar, overschakelen naar OpenCage...")
         
-        geolocator_opencage = OpenCage(api_key="YOUR_OPENCAGE_API_KEY")
+        geolocator_opencage = OpenCage(api_key="b1f4bbd95b90415da9c04e261fe331d7")
         try:
             locatie_data = geolocator_opencage.geocode(locatie, exactly_one=True, language="en")
             if locatie_data:
