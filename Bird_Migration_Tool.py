@@ -74,7 +74,7 @@ default_end=(18)
 # Sidebar configuratie
 land_keuze = st.sidebar.selectbox("Land", eu_landen, index=eu_landen.index(default_land))
 locatie_keuze = st.sidebar.text_input("Locatie", value=default_locatie)
-geselecteerde_datum = st.sidebar.date_input("Datum (vandaag of eerder !):", value=default_datum, min_value=date(2000, 1, 1))
+geselecteerde_datum = st.sidebar.date_input("Datum (vandaag of max. 2 jaar eerder !):", value=default_datum, min_value=date(2000, 1, 1))
 
 # Functie om graden naar windrichting te converteren
 def graden_naar_windrichting(graden):
