@@ -623,7 +623,7 @@ with tabs[2]:
 with tabs[3]:
     st.header("Trektelmodule - geluiden")
     st.components.v1.iframe(
-        "https://www.natuurstudiegroepdijleland.be/trektelmodule-soortenfiches/",  # URL van de externe website
+        "https://www.natuurstudiegroepdijleland.be/trektelmodule/",  # URL van de externe website
         width=1000,  # Breedte van de iframe
         height=11000  # Hoogte van de iframe
     )
