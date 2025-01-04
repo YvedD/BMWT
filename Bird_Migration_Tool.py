@@ -625,7 +625,7 @@ with tabs[3]:
     st.components.v1.iframe(
         "https://www.natuurstudiegroepdijleland.be/trektelmodule-soortenfiches/",  # URL van de externe website
         width=1000,  # Breedte van de iframe
-        height=23350  # Hoogte van de iframe
+        height=43350  # Hoogte van de iframe
     )
 with tabs[4]:
     st.header("Geluiden-steltlopers")
