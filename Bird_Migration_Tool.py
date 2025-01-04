@@ -618,7 +618,7 @@ with tabs[2]:
     st.components.v1.iframe(
         "https://birds-in-flight.net/",  # URL van de externe website
         width=1000,  # Breedte van de iframe
-        height=2000  # Hoogte van de iframe
+        #height=9000  # Hoogte van de iframe
     )
 with tabs[3]:
     st.header("CROW project")
