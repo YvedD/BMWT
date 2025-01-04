@@ -632,7 +632,7 @@ with tabs[4]:
     st.components.v1.iframe(
         "https://www.natuurstudiegroepdijleland.be/trektelmodule-soortenfiches-steltlopers/",  # URL van de externe website
         width=1000,  # Breedte van de iframe
-        height=32000  # Hoogte van de iframe
+        height=32500  # Hoogte van de iframe
     )
 with tabs[5]:
     st.header("CROW project")
