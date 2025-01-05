@@ -132,7 +132,7 @@ def get_weather_data_historical(lat, lon, selected_date):
     if response.status_code == 200:
         return response.json()
     else:
-        st.error("Fout bij het ophalen van weergegevens.")
+        st.error("Serverfout bij het ophalen van weergegevens (onderhoud) - probeer het later opnieuw.")
         return None
 
 # Functie om de zonsopgang- en zonsondergangtijd veilig op te halen
