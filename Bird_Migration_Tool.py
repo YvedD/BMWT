@@ -288,7 +288,8 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 
 
 # Hoofdvenster met tabbladen
-tabs = st.tabs(["Weergegevens", "Voorspellingen", "Vliegbeelden", "Geluiden-zangvogels", "Geluiden-steltlopers", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Crane Radar", "Gebruiksaanwijzing"])
+#tabs = st.tabs(["Weergegevens", "Voorspellingen", "Vliegbeelden", "Geluiden-zangvogels", "Geluiden-steltlopers", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Crane Radar", "Gebruiksaanwijzing"])
+tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "Crane Radar", "Gebruiksaanwijzing"])
 
 
 # Tab 0: Weergeven van de gegevens
@@ -613,51 +614,51 @@ with tabs[1]:
         # Render de kaart in Streamlit
         st_folium(forecastmap, width=600, height=600)
 
-with tabs[2]:
-    st.header("Vliegbeelden")
-    st.components.v1.iframe(
-        "https://birds-in-flight.net/",  # URL van de externe website
-        width=1000,  # Breedte van de iframe
-        height=11000  # Hoogte van de iframe
-    )
+#with tabs[2]:
+#    st.header("Vliegbeelden")
+#    st.components.v1.iframe(
+#        "https://birds-in-flight.net/",  # URL van de externe website
+#        width=1000,  # Breedte van de iframe
+#        height=11000  # Hoogte van de iframe
+#    )
+#with tabs[3]:
+#    st.header("Geluiden-zangvogels")
+#    st.components.v1.iframe(
+#        "https://www.natuurstudiegroepdijleland.be/trektelmodule-soortenfiches/",  # URL van de externe website
+#        width=1000,  # Breedte van de iframe
+#        height=43300  # Hoogte van de iframe
+#    )
+#with tabs[4]:
+#    st.header("Geluiden-steltlopers")
+#    st.components.v1.iframe(
+#        "https://www.natuurstudiegroepdijleland.be/trektelmodule-soortenfiches-steltlopers/",  # URL van de externe website
+#        width=1000,  # Breedte van de iframe
+#        height=33350  # Hoogte van de iframe
+#    )
 with tabs[3]:
-    st.header("Geluiden-zangvogels")
-    st.components.v1.iframe(
-        "https://www.natuurstudiegroepdijleland.be/trektelmodule-soortenfiches/",  # URL van de externe website
-        width=1000,  # Breedte van de iframe
-        height=43300  # Hoogte van de iframe
-    )
-with tabs[4]:
-    st.header("Geluiden-steltlopers")
-    st.components.v1.iframe(
-        "https://www.natuurstudiegroepdijleland.be/trektelmodule-soortenfiches-steltlopers/",  # URL van de externe website
-        width=1000,  # Breedte van de iframe
-        height=33350  # Hoogte van de iframe
-    )
-with tabs[5]:
     st.header("CROW project")
     st.components.v1.iframe(
         "https://www.meteo.be/services/birdDetection/#/",  # URL van de externe website
         width=1000,  # Breedte van de iframe
         height=2000  # Hoogte van de iframe
     )
-with tabs[6]:
-    st.header("BIRDTAM density profiles project")
-    st.components.v1.iframe(
-        "https://www.flysafe-birdtam.eu/profiles.html",  # URL van de externe website
-        width=1000,  # Breedte van de iframe
-        height=2000  # Hoogte van de iframe
-    )
-
-with tabs[7]:
-    st.header("Trektellen.nl (read only)")
-    st.components.v1.iframe(
-        "https://www.trektellen.nl",  # URL van de externe website
-        width=1100,  # Breedte van de iframe
-        height=2500  # Hoogte van de iframe
-    )
-
-with tabs[8]:
+#with tabs[6]:
+#    st.header("BIRDTAM density profiles project")
+#    st.components.v1.iframe(
+#        "https://www.flysafe-birdtam.eu/profiles.html",  # URL van de externe website
+#        width=1000,  # Breedte van de iframe
+#        height=2000  # Hoogte van de iframe
+#    )
+#
+#with tabs[7]:
+#    st.header("Trektellen.nl (read only)")
+#    st.components.v1.iframe(
+#        "https://www.trektellen.nl",  # URL van de externe website
+#        width=1100,  # Breedte van de iframe
+#        height=2500  # Hoogte van de iframe
+#    )
+#
+with tabs[4]:
     st.header("Kraanvogel radar)")
     st.components.v1.iframe(
         "https://analytical.sensingclues.org/cranes/",  # URL van de externe website
@@ -665,7 +666,7 @@ with tabs[8]:
         height=2500  # Hoogte van de iframe
     )
 
-with tabs[9]:
+with tabs[5]:
     st.header("Handleiding")
     # Eenvoudige handleiding
     st.text("""
