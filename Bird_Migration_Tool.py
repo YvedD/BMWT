@@ -635,7 +635,7 @@ with tabs[1]:
 #        width=1000,  # Breedte van de iframe
 #        height=33350  # Hoogte van de iframe
 #    )
-with tabs[3]:
+with tabs[2]:
     st.header("CROW project")
     st.components.v1.iframe(
         "https://www.meteo.be/services/birdDetection/#/",  # URL van de externe website
@@ -658,7 +658,7 @@ with tabs[3]:
 #        height=2500  # Hoogte van de iframe
 #    )
 #
-with tabs[4]:
+with tabs[3]:
     st.header("Kraanvogel radar)")
     st.components.v1.iframe(
         "https://analytical.sensingclues.org/cranes/",  # URL van de externe website
@@ -666,7 +666,7 @@ with tabs[4]:
         height=2500  # Hoogte van de iframe
     )
 
-with tabs[5]:
+with tabs[4]:
     st.header("Handleiding")
     # Eenvoudige handleiding
     st.text("""
