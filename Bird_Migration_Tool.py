@@ -68,9 +68,9 @@ eu_landen = [
 default_land = "Kies een land"
 default_locatie = "Locatie"
 default_datum = date.today()
-default_hours = (8, 18)
-default_start = (8)
-default_end=(18)
+default_hours = (7, 19)
+default_start = (7)
+default_end=(19)
 
 # Sidebar configuratie
 land_keuze = st.sidebar.selectbox("Land", eu_landen, index=eu_landen.index(default_land))
