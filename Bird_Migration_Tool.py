@@ -68,8 +68,8 @@ eu_landen = [
 default_land = "Kies een land"
 default_locatie = "Locatie"
 default_datum = date.today()
-default_hours = (7, 19)
-default_start = (7)
+default_hours = (6, 19)
+default_start = (6)
 default_end=(19)
 
 # Sidebar configuratie
