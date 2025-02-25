@@ -522,7 +522,7 @@ with tabs[1]:
         forecastmap = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=6)
 
         # Voeg een lichte basiskaart toe voor beter contrast
-        #folium.TileLayer(
+#        #folium.TileLayer(
         #    tiles='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png?lang=nl',
         #    attr='© OpenStreetMap contributors',
         #    name='Lichte basiskaart',
@@ -530,70 +530,70 @@ with tabs[1]:
         #).add_to(forecastmap)
 
         # Voeg de OpenWeatherMap temperatuurlaag toe
-        tile_url_temp = f"https://tile.openweathermap.org/map/temp_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
-        folium.TileLayer(
-            tiles=tile_url_temp,
-            attr='Map data © OpenWeatherMap',
-            name="Temperatuurkaart",
-            overlay=True,
-            control=True,
-            opacity=3.0
-        ).add_to(forecastmap)
+#        tile_url_temp = f"https://tile.openweathermap.org/map/temp_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
+#        folium.TileLayer(
+#            tiles=tile_url_temp,
+#            attr='Map data © OpenWeatherMap',
+#            name="Temperatuurkaart",
+#            overlay=True,
+#            control=True,
+#            opacity=3.0
+#        ).add_to(forecastmap)
 
         # Voeg de OpenWeatherMap neerslaglaag toe
-        tile_url_precip = f"https://tile.openweathermap.org/map/precipitation_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
-        folium.TileLayer(
-            tiles=tile_url_precip,
-            attr='Map data © OpenWeatherMap',
-            name="Neerslagkaart",
-            overlay=True,
-            control=True,
-            opacity=4.0
-        ).add_to(forecastmap)
+#        tile_url_precip = f"https://tile.openweathermap.org/map/precipitation_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
+#        folium.TileLayer(
+#            tiles=tile_url_precip,
+#            attr='Map data © OpenWeatherMap',
+#            name="Neerslagkaart",
+#            overlay=True,
+#            control=True,
+#            opacity=4.0
+#        ).add_to(forecastmap)
 
-        tile_url_wind = f"https://tile.openweathermap.org/map/wind_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
-        folium.TileLayer(
-            tiles=tile_url_wind,
-            attr='Map data © OpenWeatherMap',
-            name="Windkaart",
-            overlay=True,
-            control=True,
-            opacity=3.0
-        ).add_to(forecastmap)
+#        tile_url_wind = f"https://tile.openweathermap.org/map/wind_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
+#        folium.TileLayer(
+#            tiles=tile_url_wind,
+#            attr='Map data © OpenWeatherMap',
+#            name="Windkaart",
+#            overlay=True,
+#            control=True,
+#            opacity=3.0
+#        ).add_to(forecastmap)
 
         # Voeg de OpenWeatherMap bewolkinglaag toe
-        tile_url_cloud = f"https://tile.openweathermap.org/map/clouds_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
-        folium.TileLayer(
-            tiles=tile_url_cloud,
-            attr='Map data © OpenWeatherMap',
-            name="Bewolkingkaart",
-            overlay=True,
-            control=True,
-            opacity=2.0
-        ).add_to(forecastmap)
+#        tile_url_cloud = f"https://tile.openweathermap.org/map/clouds_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
+#        folium.TileLayer(
+#            tiles=tile_url_cloud,
+#            attr='Map data © OpenWeatherMap',
+#            name="Bewolkingkaart",
+#            overlay=True,
+#            control=True,
+#            opacity=2.0
+#        ).add_to(forecastmap)
 
         # Voeg de Esri satellietlaag toe
-        folium.TileLayer(
-            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            attr='Map data © Esri',
-            name='Satellietbeeld (40%)',
-            show=False,
-            overlay=True,
-            control=True,
-            opacity=0.4
-        ).add_to(forecastmap)
+ #       folium.TileLayer(
+ #           tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+ #           attr='Map data © Esri',
+ #           name='Satellietbeeld (40%)',
+ #           show=False,
+ #           overlay=True,
+ #           control=True,
+ #           opacity=0.4
+ #       ).add_to(forecastmap)
 
 
         # Gebruik een aangepaste afbeelding als icoon
-        icon_path = 'images/Milvus1.png'  # Vervang dit door een URL of pad naar jouw afbeelding
-        custom_icon = folium.CustomIcon(icon_path, icon_size=(25, 38))
+ #       icon_path = 'images/Milvus1.png'  # Vervang dit door een URL of pad naar jouw afbeelding
+ #       custom_icon = folium.CustomIcon(icon_path, icon_size=(25, 38))
 
         # Voeg de marker toe aan de kaart
-        folium.Marker(
-            location=[st.session_state.lat, st.session_state.lon],
-            icon=custom_icon, icon_anchor=(12.5, 38),
-            popup=locatie_keuze
-        ).add_to(forecastmap)
+ #       folium.Marker(
+ #           location=[st.session_state.lat, st.session_state.lon],
+ #           icon=custom_icon, icon_anchor=(12.5, 38),
+ #           popup=locatie_keuze
+ #       ).add_to(forecastmap)
 
         # hieronder alle code om de kaart te renderen
         # Voeg een marker toe voor de locatie
@@ -605,13 +605,13 @@ with tabs[1]:
         #)
 
         # Voeg de marker toe aan de kaart
-        #marker2.add_to(forecastmap)
+ #       #marker2.add_to(forecastmap)
 
         # Voeg de LayerControl toe om lagen aan of uit te schakelen
-        folium.LayerControl(position='topright').add_to(forecastmap)
+ #       folium.LayerControl(position='topright').add_to(forecastmap)
 
         # Render de kaart in Streamlit
-        st_folium(forecastmap, width=600, height=600)
+ #       st_folium(forecastmap, width=600, height=600)
 
         # Haal latitude en longitude op uit session_state of stel defaults in
         lat = st.session_state.get("lat", 50.681)  # Standaardwaarde als lat niet is ingesteld
