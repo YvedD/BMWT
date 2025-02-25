@@ -619,8 +619,7 @@ with tabs[1]:
 
         # Maak de dynamische URL
         windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=4&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
-       #windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=6&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
-        st.markdown(
+       #windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=6&overlay=wind&product=ecmwf&level=surface&lat=49.411&lon=4.768&detailLat=50.681&detailLon=4.768&detail=true&pressure=true"
             f"""
             <iframe width="100%" height="850" src="{windy_url}" frameborder="0"></iframe>
             """,
