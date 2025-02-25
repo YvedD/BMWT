@@ -516,6 +516,13 @@ with tabs[1]:
     if 'lat' not in st.session_state or 'lon' not in st.session_state:
         st.session_state.lat = 52.3794  # Amsterdam als standaard locatie
         st.session_state.lon = 4.9009
+with tabs[2]:
+    st.header("CROW project")
+    st.components.v1.iframe(
+        "https://www.meteo.be/services/birdDetection/#/",  # URL van de externe website
+        width=1000,  # Breedte van de iframe
+        height=2000  # Hoogte van de iframe
+    )
 with tabs[3]:
     st.header("Kraanvogel radar)")
     st.components.v1.iframe(
@@ -523,7 +530,6 @@ with tabs[3]:
         width=1000,  # Breedte van de iframe
         height=1000  # Hoogte van de iframe
     )
-
 with tabs[4]:
     st.header("Handleiding")
     # Eenvoudige handleiding
