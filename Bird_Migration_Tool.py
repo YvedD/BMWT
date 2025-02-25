@@ -425,6 +425,20 @@ with tabs[1]:
 
     # Veronderstel dat we in tabblad2 zitten, met column1 zichtbaar
     with col1:
+        # Haal latitude en longitude op uit session_state of stel defaults in
+        #lat = st.session_state.get("lat", 50.681)  # Standaardwaarde als lat niet is ingesteld
+        #lon = st.session_state.get("lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
+
+        # Maak de dynamische URL
+        windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=4&overlay=wind&product=ecmwf&level=surface&lat={latitude}&lon={longitude}&detailLat={latitude}&detailLon={longitude}&detail=true&pressure=true"
+       #windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=6&overlay=wind&product=ecmwf&level=surface&lat=49.411&lon=4.768&detailLat=50.681&detailLon=4.768&detail=true&pressure=true"
+            f"""
+            <iframe width="100%" height="850" src="{windy_url}" frameborder="0"></iframe>
+            """,
+            unsafe_allow_html=True
+        )
+
+
         if weather_data_forecast:
             # Toon de dagelijkse voorspelling
             hourly_data = weather_data_forecast['hourly']
