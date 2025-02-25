@@ -392,8 +392,6 @@ with tabs[0]: #dit is het meest linkse tabblad
 
 # hier de code voor het tweede tabblad (voorspellingen)
 with tabs[1]:
-    col1, col2 = st.columns([0.85,0.15])
-
     # Controleer of sessiestatus waarden bevat
     if "lat" not in st.session_state or "lon" not in st.session_state:
         st.error("Latitude en Longitude zijn niet ingesteld. Stel eerst een locatie in.")
@@ -416,123 +414,110 @@ with tabs[1]:
         "&forecast_days=7"
     )
 
-    #st.write(f"API URL: {API_URL}")
-
-
-
     # Haal de weerdata op
     weather_data_forecast = get_weather_data_forecast()
 
-    # Veronderstel dat we in tabblad2 zitten, met column1 zichtbaar
-    with col1:
-        # Haal latitude en longitude op uit session_state of stel defaults in
-        lat = st.session_state.get("lat", 50.681)  # Standaardwaarde als lat niet is ingesteld
-        lon = st.session_state.get("lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
+    # Haal latitude en longitude op uit session_state of stel defaults in
+    lat = st.session_state.get("lat", 50.681)  # Standaardwaarde als lat niet is ingesteld
+    lon = st.session_state.get("lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
 
-        # Maak de dynamische URL
-        windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=4&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
-        #windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=6&overlay=wind&product=ecmwf&level=surface&lat=49.411&lon=4.768&detailLat=50.681&detailLon=4.768&detail=true&pressure=true"
-        # Streamlit Iframe in Markdown
-        st.markdown(
-            f"""
-            <iframe width="100%" height="850" src="{windy_url}" frameborder="0"></iframe>
-            """,
-            unsafe_allow_html=True
+    # Maak de dynamische Windy widget URL
+    windy_url = f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=4&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
+
+    # Streamlit Iframe in Markdown
+    st.markdown(
+        f"""
+        <iframe width="100%" height="850" src="{windy_url}" frameborder="0"></iframe>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if weather_data_forecast:
+        # Toon de dagelijkse voorspelling
+        hourly_data = weather_data_forecast['hourly']
+
+        # Functie om windrichting te converteren naar een compasrichting
+        def richting_to_compas(graden):
+            richtingen = ['N', 'NNO', 'NO', 'ONO', 'O', 'OZO', 'ZO', 'ZZO', 'Z', 'ZZW', 'ZW', 'WZW', 'W', 'WNW', 'NW', 'NNW']
+            index = int((graden % 360) / 22.5)  # Elke richting dekt 22.5 graden
+            return richtingen[index]
+
+        # Zet de data om naar een DataFrame
+        hourly_df = pd.DataFrame({
+            'Time': pd.to_datetime(hourly_data['time']),
+            'Temperatuur (°C)': [f"{temp:.1f} °C" for temp in hourly_data['temperature_2m']],
+            'Neerslag (mm)': [f"{rain:.1f}mm" for rain in hourly_data['precipitation']],
+            'Bewolking Laag (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_low']],
+            'Bewolking Middel (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_mid']],
+            'Bewolking Hoog (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_high']],
+            'Bewolking (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover']],
+            'Wind Richting': [richting_to_compas(dir) for dir in hourly_data['wind_direction_10m']],
+            'Windkracht op 10m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_10m']],
+            'Windkracht op 80m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_80m']],
+            'Zichtbaarheid (km)': [f"{int(vis / 1000)} km" for vis in hourly_data['visibility']]
+        })
+
+        # Voeg datum en uur toe
+        hourly_df['Datum'] = hourly_df['Time'].dt.date
+        hourly_df['Uur'] = hourly_df['Time'].dt.strftime('%H:%M')
+
+        # Kolomtitels aanpassen met iconen
+        hourly_df = hourly_df.rename(columns={
+            'Temperatuur (°C)': '🌡️ °C',
+            'Neerslag (mm)': '🌧️ mm',
+            'Bewolking Laag (%)': '☁️@Low %',
+            'Bewolking Middel (%)': '☁️@Mid %',
+            'Bewolking Hoog (%)': '☁️@High %',
+            'Bewolking (%)': '☁️@tot %',
+            'Wind Richting': '🧭',
+            'Windkracht op 10m (Bf)': '💨@10m',
+            'Windkracht op 80m (Bf)': '💨@80m',
+            'Zichtbaarheid (km)': '👁️ km'
+        })
+
+        # Streamlit Titel
+        st.title("Weergegevens per Uur")
+
+        # Multiselect voor kolommen
+        geselecteerde_kolommen = st.multiselect(
+            "Selecteer de kolommen die je wilt zien (en in welke volgorde)",
+            [col for col in hourly_df.columns if col not in ['Datum', 'Uur']],
+            default=[col for col in hourly_df.columns if col not in ['Datum', 'Uur']]
         )
 
-        if weather_data_forecast:
-            # Toon de dagelijkse voorspelling
-            hourly_data = weather_data_forecast['hourly']
-            # Functie om windrichting te converteren naar een compasrichting
-            def richting_to_compas(graden):
-                richtingen = ['N', 'NNO', 'NO', 'ONO', 'O', 'OZO', 'ZO', 'ZZO', 'Z', 'ZZW', 'ZW', 'WZW', 'W', 'WNW',
-                              'NW', 'NNW']
-                index = int((graden % 360) / 22.5)  # Elke richting dekt 22.5 graden
-                return richtingen[index]
+        # Dataframe filtering op geselecteerde kolommen
+        if geselecteerde_kolommen:
+            geselecteerde_kolommen = ['Uur'] + geselecteerde_kolommen
+            ordered_df = hourly_df[['Datum'] + geselecteerde_kolommen].copy()
 
+            # Groepeer per dag en toon de tabel voor elke dag
+            for day, group in ordered_df.groupby('Datum'):
+                st.write(f"### **{day}**")
+                st.dataframe(group.drop(columns='Datum'), use_container_width=True)
+        else:
+            st.write("Selecteer ten minste één kolom om te tonen.")
 
-            # Zet de data om naar een DataFrame
-            hourly_df = pd.DataFrame({
-                'Time': pd.to_datetime(hourly_data['time']),
-                'Temperatuur (°C)': [f"{temp:.1f} °C" for temp in hourly_data['temperature_2m']],
-                'Neerslag (mm)': [f"{rain:.1f}mm" for rain in hourly_data['precipitation']],
-                'Bewolking Laag (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_low']],
-                'Bewolking Middel (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_mid']],
-                'Bewolking Hoog (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_high']],
-                'Bewolking (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover']],
-                'Wind Richting': [richting_to_compas(dir) for dir in hourly_data['wind_direction_10m']],
-                'Windkracht op 10m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_10m']],
-                'Windkracht op 80m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_80m']],
-                'Zichtbaarheid (km)': [f"{int(vis / 1000)} km" for vis in hourly_data['visibility']]
-            })
+        # Controleer of `ordered_df` niet leeg is
+        if not ordered_df.empty:
+            # Zet `ordered_df` om naar Excel
+            excel_data = to_excel(ordered_df)
 
-            # Voeg datum en uur toe
-            hourly_df['Datum'] = hourly_df['Time'].dt.date
-            hourly_df['Uur'] = hourly_df['Time'].dt.strftime('%H:%M')
-
-            # Kolomtitels aanpassen met iconen (voorbeeld)
-            hourly_df = hourly_df.rename(columns={
-                'Temperatuur (°C)': '🌡️ °C',
-                'Neerslag (mm)': '🌧️ mm',
-                'Bewolking Laag (%)': '☁️@Low %',
-                'Bewolking Middel (%)': '☁️@Mid %',
-                'Bewolking Hoog (%)': '☁️@High %',
-                'Bewolking (%)': '☁️@tot %',
-                'Wind Richting': '🧭',
-                'Windkracht op 10m (Bf)': '💨@10m',
-                'Windkracht op 80m (Bf)': '💨@80m',
-                'Zichtbaarheid (km)': '👁️ km'
-            })
-
-
-            # Gebruik Streamlit voor het weergeven van de data
-            st.title("Weergegevens per Uur")
-
-            # Voeg een multiselect toe voor kolommen die de gebruiker kan kiezen
-            geselecteerde_kolommen = st.multiselect(
-                "Selecteer de kolommen die je wilt zien (en in welke volgorde)",
-                [col for col in hourly_df.columns if col not in ['Datum', 'Uur']],
-                # We verwijderen de 'Datum' en 'Uur' kolommen hier
-                default=[col for col in hourly_df.columns if col not in ['Datum', 'Uur']]
-                # Standaard selecteren we alles behalve 'Datum' en 'Uur'
+            # Downloadknop voor Excel bestand
+            st.download_button(
+                label="Export Excel",
+                data=excel_data,
+                file_name="ordered_df.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+        else:
+            st.write("Het dataframe `ordered_df` is leeg. Voeg data toe om te downloaden.")
 
-            # De DataFrame wordt nu gefilterd op de geselecteerde kolommen en in de volgorde van de selectie
-            if geselecteerde_kolommen:
-                # Voeg de 'Uur' kolom altijd als eerste toe
-                geselecteerde_kolommen = ['Uur'] + geselecteerde_kolommen
-                ordered_df = hourly_df[['Datum'] + geselecteerde_kolommen].copy()  # Zorg dat "Datum" blijft voor groepering
-
-                # Groepeer de gegevens per dag en toon de tabel voor elke dag
-                for day, group in ordered_df.groupby('Datum'):
-                    st.write(f"### **{day}**")
-                    st.dataframe(group.drop(columns='Datum'), use_container_width=True)
-            else:
-                st.write("Selecteer ten minste één kolom om te tonen.")
-
-
-            # Controleer of `ordered_df` niet leeg is
-            if not ordered_df.empty:
-                # Zet `ordered_df` om naar Excel
-                excel_data = to_excel(ordered_df)
-
-                # Downloadknop voor Excel bestand
-                st.download_button(
-                    label="Export Excel",
-                    data=excel_data,
-                    file_name="ordered_df.xlsx",  # Bestand krijgt een naam gebaseerd op jouw dataframe
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            else:
-                st.write("Het dataframe `ordered_df` is leeg. Voeg data toe om te downloaden.")
-
-
+    # Standaardwaarden instellen als ze niet bestaan
     if 'lat' not in st.session_state or 'lon' not in st.session_state:
-        st.session_state.lat = 52.3794  # Standaard locatie, pas aan naar jouw wensen
-        st.session_state.lon = 4.9009  # Standaard locatie, pas aan naar jouw wensen
+        st.session_state.lat = 52.3794  # Amsterdam als standaard locatie
+        st.session_state.lon = 4.9009
 
-    # Gebruik de tweede kolom in Streamlit
-    with col2:
+#    with col2:
         # Maak de kaart
 #        forecastmap = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=6)
 
