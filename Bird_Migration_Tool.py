@@ -392,7 +392,7 @@ with tabs[0]: #dit is het meest linkse tabblad
 
 # hier de code voor het tweede tabblad (voorspellingen)
 with tabs[1]:
-    col1, col2 = st.columns([0.45,0.55])
+    col1, col2 = st.columns([0.85,0.15])
 
     # Controleer of sessiestatus waarden bevat
     if "lat" not in st.session_state or "lon" not in st.session_state:
@@ -425,7 +425,20 @@ with tabs[1]:
 
     # Veronderstel dat we in tabblad2 zitten, met column1 zichtbaar
     with col1:
+        # Haal latitude en longitude op uit session_state of stel defaults in
+        lat = st.session_state.get("lat", 50.681)  # Standaardwaarde als lat niet is ingesteld
+        lon = st.session_state.get("lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
 
+        # Maak de dynamische URL
+        windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=4&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
+        #windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=6&overlay=wind&product=ecmwf&level=surface&lat=49.411&lon=4.768&detailLat=50.681&detailLon=4.768&detail=true&pressure=true"
+        # Streamlit Iframe in Markdown
+        st.markdown(
+            f"""
+            <iframe width="100%" height="850" src="{windy_url}" frameborder="0"></iframe>
+            """,
+            unsafe_allow_html=True
+        )
 
         if weather_data_forecast:
             # Toon de dagelijkse voorspelling
@@ -615,20 +628,6 @@ with tabs[1]:
         # Render de kaart in Streamlit
  #       st_folium(forecastmap, width=600, height=600)
 
-        # Haal latitude en longitude op uit session_state of stel defaults in
-        lat = st.session_state.get("lat", 50.681)  # Standaardwaarde als lat niet is ingesteld
-        lon = st.session_state.get("lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
-
-        # Maak de dynamische URL
-        windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=4&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
-        #windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=6&overlay=wind&product=ecmwf&level=surface&lat=49.411&lon=4.768&detailLat=50.681&detailLon=4.768&detail=true&pressure=true"
-        # Streamlit Iframe in Markdown
-        st.markdown(
-            f"""
-            <iframe width="100%" height="850" src="{windy_url}" frameborder="0"></iframe>
-            """,
-            unsafe_allow_html=True
-        )
 #    st.header("Vliegbeelden")
 #    st.components.v1.iframe(
 #        "https://birds-in-flight.net/",  # URL van de externe website
