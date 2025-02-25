@@ -613,17 +613,20 @@ with tabs[1]:
         # Render de kaart in Streamlit
         st_folium(forecastmap, width=600, height=600)
 
-        # Definieer de Windy-widget als een HTML-iframe
-        windy_html = """
-        <iframe width="100%" height="450" 
-        src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=default&metricTemp=default&metricWind=default&zoom=6&overlay=wind&product=ecmwf&level=surface&lat=50.681&lon=4.768" 
-        frameborder="0"></iframe>
-        """
+        # Haal latitude en longitude op uit session_state of stel defaults in
+        lat = st.session_state.get("lat", 50.681)  # Standaardwaarde als lat niet is ingesteld
+        lon = st.session_state.get("lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
 
-        # Gebruik markdown met `unsafe_allow_html=True` om de widget weer te geven
-        st.markdown(windy_html, unsafe_allow_html=True)#with tabs[2]:
+        # Maak de dynamische URL
+        windy_url = f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=default&metricTemp=default&metricWind=default&zoom=6&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}"
 
-
+        # Toon de Windy-widget in een Streamlit app
+        st.markdown(
+            f"""
+            <iframe width="100%" height="450" src="{windy_url}" frameborder="0"></iframe>
+            """,
+            unsafe_allow_html=True
+        )
 #    st.header("Vliegbeelden")
 #    st.components.v1.iframe(
 #        "https://birds-in-flight.net/",  # URL van de externe website
