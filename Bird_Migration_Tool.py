@@ -520,7 +520,7 @@ with tabs[2]:
     st.header("CROW project")
     st.components.v1.iframe(
         "https://www.meteo.be/services/birdDetection/#/",  # URL van de externe website
-        width=1000,  # Breedte van de iframe
+        width=100%,  # Breedte van de iframe
         height=2000  # Hoogte van de iframe
     )
 with tabs[3]:
