@@ -518,15 +518,21 @@ with tabs[1]:
         st.session_state.lon = 4.9009
 with tabs[2]:
     st.header("CROW project")
-    st.components.v1.iframe(
-        "https://www.meteo.be/services/birdDetection/#/",  # URL van de externe website
-        width=100%,  # Breedte van de iframe
-        height=2000  # Hoogte van de iframe
+    # Maak de dynamische Windy widget URL
+    CROW_url = f"https://analytical.sensingclues.org/cranes/"
+
+    # Streamlit Iframe in Markdown
+    st.markdown(
+        f"""
+        <iframe width="100%" height="1000" src="{CROW_url}" frameborder="1"></iframe>
+        """,
+        unsafe_allow_html=True
     )
+
 with tabs[3]:
     st.header("Kraanvogel radar)")
     st.components.v1.iframe(
-        "https://analytical.sensingclues.org/cranes/",  # URL van de externe website
+        CROW_url = f"https://analytical.sensingclues.org/cranes/",  # URL van de externe website
         width=1000,  # Breedte van de iframe
         height=1000  # Hoogte van de iframe
     )
