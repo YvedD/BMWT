@@ -519,7 +519,7 @@ with tabs[1]:
 with tabs[2]:
     st.header("CROW project")
     # Maak de dynamische Windy widget URL
-    CROW_url = f"https://analytical.sensingclues.org/cranes/"
+    CROW_url = f"https://www.meteo.be/services/birdDetection/#/"
 
     # Streamlit Iframe in Markdown
     st.markdown(
