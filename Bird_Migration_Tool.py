@@ -392,7 +392,7 @@ with tabs[0]: #dit is het meest linkse tabblad
 
 # hier de code voor het tweede tabblad (voorspellingen)
 with tabs[1]:
-    col1, col2 = st.columns([0.55,0.45])
+    col1, col2 = st.columns([0.45,0.55])
 
     # Controleer of sessiestatus waarden bevat
     if "lat" not in st.session_state or "lon" not in st.session_state:
@@ -519,7 +519,7 @@ with tabs[1]:
     # Gebruik de tweede kolom in Streamlit
     with col2:
         # Maak de kaart
-        forecastmap = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=6)
+#        forecastmap = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=6)
 
         # Voeg een lichte basiskaart toe voor beter contrast
 #        #folium.TileLayer(
