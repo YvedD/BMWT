@@ -531,7 +531,7 @@ with tabs[2]:
 with tabs[3]:
     st.header("Kraanvogel radar)")
     # Maak de dynamische Crane widget URL
-        Crane_url = f"https://analytical.sensingclues.org/cranes/",  # URL van de externe website
+    Crane_url = f"https://analytical.sensingclues.org/cranes/",  # URL van de externe website
     # Streamlit Iframe in Markdown
     st.markdown(
         f"""
