@@ -622,7 +622,7 @@ with tabs[1]:
         windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=6&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
         st.markdown(
             f"""
-            <iframe width="100%" height="651" src="{windy_url}" frameborder="0"></iframe>
+            <iframe width="100%" height="100%" src="{windy_url}" frameborder="0"></iframe>
             """,
             unsafe_allow_html=True
         )
