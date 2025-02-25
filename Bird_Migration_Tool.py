@@ -618,9 +618,8 @@ with tabs[1]:
         lon = st.session_state.get("lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
 
         # Maak de dynamische URL
-        #f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=default&metricTemp=default&metricWind=default&zoom=6&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}"
-        windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=6&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true" frameborder="0"></iframe>
-        # Toon de Windy-widget in een Streamlit app
+        #          f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=default&metricTemp=default&metricWind=default&zoom=6&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}"
+        windy_url =f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=6&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
         st.markdown(
             f"""
             <iframe width="100%" height="651" src="{windy_url}" frameborder="0"></iframe>
