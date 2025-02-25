@@ -427,7 +427,7 @@ with tabs[1]:
     # Streamlit Iframe in Markdown
     st.markdown(
         f"""
-        <iframe width="100%" height="850" src="{windy_url}" frameborder="0"></iframe>
+        <iframe width="100%" height="1000" src="{windy_url}" frameborder="0"></iframe>
         """,
         unsafe_allow_html=True
     )
