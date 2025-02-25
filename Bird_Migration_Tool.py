@@ -12,6 +12,7 @@ import pytz
 from io import BytesIO
 import time
 from geopy.exc import GeocoderUnavailable
+import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="Bird Migration Weather Tool",
@@ -614,6 +615,15 @@ with tabs[1]:
         # Render de kaart in Streamlit
         st_folium(forecastmap, width=600, height=600)
 
+        # Windy-widget insluiten als HTML
+        windy_html = """
+        <iframe width="100%" height="450" 
+        src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=default&metricTemp=default&metricWind=default&zoom=6&overlay=wind&product=ecmwf&level=surface&lat=50.681&lon=4.768"
+        frameborder="0" sandbox="allow-scripts allow-same-origin"></iframe>
+        """
+
+        # Laad de widget in Streamlit
+        components.html(windy_html, height=450)
 #with tabs[2]:
 #    st.header("Vliegbeelden")
 #    st.components.v1.iframe(
