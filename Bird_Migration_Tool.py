@@ -505,19 +505,19 @@ with tabs[1]:
             st.write("Selecteer ten minste één kolom om te tonen.")
 
         # Controleer of `ordered_df` niet leeg is
-        if not ordered_df.empty:
+        #if not ordered_df.empty:
             # Zet `ordered_df` om naar Excel
-            excel_data = to_excel(ordered_df)
+            #excel_data = to_excel(ordered_df)
 
             # Downloadknop voor Excel bestand
-            st.download_button(
-                label="Export Excel",
-                data=excel_data,
-                file_name="ordered_df.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        else:
-            st.write("Het dataframe `ordered_df` is leeg. Voeg data toe om te downloaden.")
+            #st.download_button(
+            #    label="Export Excel",
+            #    data=excel_data,
+            #    file_name="ordered_df.xlsx",
+            #    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            #)
+        #else:
+            #st.write("Het dataframe `ordered_df` is leeg. Voeg data toe om te downloaden.")
 
     # Standaardwaarden instellen als ze niet bestaan
     if 'lat' not in st.session_state or 'lon' not in st.session_state:
