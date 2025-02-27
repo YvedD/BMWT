@@ -288,7 +288,7 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 
 # Hoofdvenster met tabbladen
 #tabs = st.tabs(["Weergegevens", "Voorspellingen", "Vliegbeelden", "Geluiden-zangvogels", "Geluiden-steltlopers", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Crane Radar", "Gebruiksaanwijzing"])
-tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "Crane Radar", "Gebruiksaanwijzing"])
+tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "Kraanvogel Radar", "Gebruiksaanwijzing"])
 
 
 # Tab 0: Weergeven van de gegevens
