@@ -392,13 +392,13 @@ with tabs[0]: #dit is het meest linkse tabblad
 
 # hier de code voor het tweede tabblad (voorspellingen)
 with tabs[1]:
-        st.text("""
-            Handleiding voor de Windy widget:
-            Kies een locatie naar keuze om onderaan de weerkaart de meest recente voorspellingen te verkrijgen.
-            Zoom in of uit op de kaart om een preciezere locatie te kiezen voor deze voorspellingen.
-            Zoom uit om een breder weerbeeld te verkrijgen.
-            Klik bovenaan rechts om andere lagen te verkrijgen (bewolking, temperatuur, wind, sateliet, ...)"""
-        )
+    st.text("""
+        Handleiding voor de Windy widget:
+        Kies een locatie naar keuze om onderaan de weerkaart de meest recente voorspellingen te verkrijgen.
+        Zoom in of uit op de kaart om een preciezere locatie te kiezen voor deze voorspellingen.
+        Zoom uit om een breder weerbeeld te verkrijgen.
+        Klik bovenaan rechts om andere lagen te verkrijgen (bewolking, temperatuur, wind, sateliet, ...)"""
+    )
     # Controleer of sessiestatus waarden bevat
     if "lat" not in st.session_state or "lon" not in st.session_state:
         st.error("Latitude en Longitude zijn niet ingesteld. Stel eerst een locatie in.")
