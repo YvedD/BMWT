@@ -399,6 +399,20 @@ with tabs[1]:
         Zoom uit om een breder weerbeeld te verkrijgen.
         Klik bovenaan rechts om andere lagen te verkrijgen (bewolking, temperatuur, wind, sateliet, ...)"""
     )
+
+    # Beschikbare overlays en de corresponderende Windy API-waarden
+    overlays = {
+        "Wind": "wind",
+        "Mist": "fog",
+        "Lage bewolking": "clouds_low",
+        "Middelbare bewolking": "clouds_mid",
+        "Neerslag": "rain"
+    }
+
+    # Dropdown voor overlay-selectie, met "Wind" als standaard
+    selected_overlay = st.selectbox("Kies een overlay:", list(overlays.keys()), index=0)
+
+
     # Controleer of sessiestatus waarden bevat
     if "lat" not in st.session_state or "lon" not in st.session_state:
         st.error("Latitude en Longitude zijn niet ingesteld. Stel eerst een locatie in.")
@@ -429,7 +443,7 @@ with tabs[1]:
     lon = st.session_state.get("lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
 
     # Maak de dynamische Windy widget URL
-    windy_url = f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=7&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
+    windy_url = f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=7&overlay={overlays[selected_overlay]}&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
 
     # Streamlit Iframe in Markdown
     st.markdown(
