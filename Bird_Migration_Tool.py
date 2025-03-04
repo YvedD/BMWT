@@ -456,7 +456,7 @@ with tabs[1]:
     lon = st.session_state.get("lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
 
     # Maak de dynamische Windy widget URL
-    windy_url = f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=7&overlay={overlays[selected_overlay]}&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
+    windy_url = f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=7&overlay={overlays[st.session_state.windy_overlay]}&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
 
     # Streamlit Iframe in Markdown
     st.markdown(
