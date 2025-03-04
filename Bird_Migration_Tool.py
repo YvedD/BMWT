@@ -409,9 +409,22 @@ with tabs[1]:
         "Neerslag": "rain"
     }
 
-    # Dropdown voor overlay-selectie, met "Wind" als standaard
-    selected_overlay = st.selectbox("Kies een overlay:", list(overlays.keys()), index=0)
+    # Initieer session_state als het nog niet bestaat
+    if "windy_overlay" not in st.session_state:
+        st.session_state.windy_overlay = "Wind"  # Standaard overlay
 
+    # Callback functie om de overlay aan te passen
+    def update_windy():
+        st.session_state.windy_overlay = st.session_state.overlay_select
+
+    # Dropdown voor overlay-selectie met `on_change`
+    st.selectbox(
+        "Kies een overlay:", 
+        list(overlays.keys()), 
+        index=list(overlays.keys()).index(st.session_state.windy_overlay),
+        key="overlay_select", 
+        on_change=update_windy
+    )
 
     # Controleer of sessiestatus waarden bevat
     if "lat" not in st.session_state or "lon" not in st.session_state:
