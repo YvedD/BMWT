@@ -406,8 +406,8 @@ with tabs[1]:
         "Mist": "fog",
         "Lage bewolking": "lclouds",
         "Middelbare bewolking": "mclouds",
-        "Neerslag": "rain"
-        "Thermiek": "ccl"
+        "Neerslag": "rain",
+        "Thermiek": "ccl",
         "Zicht": "visibility"
     }
 
