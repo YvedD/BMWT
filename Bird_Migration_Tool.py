@@ -404,9 +404,11 @@ with tabs[1]:
     overlays = {
         "Wind": "wind",
         "Mist": "fog",
-        "Lage bewolking": "clouds_low",
-        "Middelbare bewolking": "clouds_mid",
+        "Lage bewolking": "lclouds",
+        "Middelbare bewolking": "mclouds",
         "Neerslag": "rain"
+        "Thermiek": "ccl"
+        "Zicht": "visibility"
     }
 
     # Initieer session_state als het nog niet bestaat
