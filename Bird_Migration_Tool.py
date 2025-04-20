@@ -590,54 +590,63 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
-    st.title("🔊 Flight calls van vogelsoorten")
+#st.set_page_config(page_title="Vogel Flight Calls", layout="centered")
 
-    # Soortenlijst (manueel uitbreidbaar)
-    species_list = [
-        "Turdus merula",      # Merel
-        "Fringilla coelebs",  # Vink
-        "Erithacus rubecula", # Roodborst
-        "Anthus pratensis",   # Graspieper
-        "Regulus regulus",    # Goudhaan
-        "Sturnus vulgaris",   # Spreeuw
-    ]
+st.title("🎧 Flight Calls in HTML-stijl")
 
-    selected_species = st.selectbox("Kies een vogelsoort:", species_list)
+# ▼ 1. Dropdown met soorten (manueel uitbreidbaar)
+species_list = [
+    "Turdus merula",      # Merel
+    "Fringilla coelebs",  # Vink
+    "Erithacus rubecula", # Roodborst
+    "Anthus pratensis",   # Graspieper
+    "Regulus regulus",    # Goudhaan
+    "Sturnus vulgaris",   # Spreeuw
+]
+selected_species = st.selectbox("Kies een soort:", species_list)
 
-    # Ophalen van flight call-geluiden via Xeno-Canto API
-    def get_flight_call_urls(species):
-        query = f"{species} flight call"
-        url = f"https://xeno-canto.org/api/2/recordings?query={query}"
-        response = requests.get(url)
-        if response.status_code != 200:
-            return []
+# ▼ 2. Xeno-Canto API-oproep om 6 flight calls op te halen
+@st.cache_data
+def get_audio_urls(species):
+    query = f"{species} flight call"
+    url = f"https://xeno-canto.org/api/2/recordings?query={query}"
+    resp = requests.get(url)
+    if resp.status_code != 200:
+        return []
+    data = resp.json()
+    return [f"https:{rec['file']}" for rec in data['recordings'][:6]]
 
-        data = response.json()
-        recordings = data.get("recordings", [])[:6]
-        return [f"https:{rec['file']}" for rec in recordings]
+audio_urls = get_audio_urls(selected_species)
 
-    # HTML genereren met <audio> spelers
-    def generate_audio_html(audio_urls):
-        if not audio_urls:
-            return "<p>Geen flight calls gevonden.</p>"
-
-        html = "<h3>Flight calls van de geselecteerde soort:</h3>"
+# ▼ 3. HTML genereren met meerdere <audio> spelers (zoals jij bedoelde)
+def generate_html_block(audio_urls):
+    html = """
+    <html>
+    <head>
+        <style>
+            body { font-family: Arial; padding: 10px; }
+            audio { margin-bottom: 10px; width: 100%; }
+        </style>
+    </head>
+    <body>
+        <h3>Flight calls van: """ + selected_species + "</h3>\n"
+    if not audio_urls:
+        html += "<p>Geen opnames gevonden.</p>"
+    else:
         for i, url in enumerate(audio_urls, 1):
             html += f"""
             <p><strong>Fragment {i}</strong></p>
-            <audio controls style="width: 100%;">
+            <audio controls>
                 <source src="{url}" type="audio/mpeg">
                 Je browser ondersteunt geen audio.
-            </audio><br>
-            """
-        return html
+            </audio><br>"""
+    html += "</body></html>"
+    return html
 
-    # Ophalen en tonen
-    urls = get_flight_call_urls(selected_species)
-    html_code = generate_audio_html(urls)
+html_code = generate_html_block(audio_urls)
 
-    # Injecteer HTML met meerdere audioknoppen
-    st.components.v1.html(html_code, height=600, scrolling=True)
+# ▼ 4. HTML-code tonen binnen Streamlit met iframe-effect
+st.components.v1.html(html_code, height=600, scrolling=True)
 
 
 
