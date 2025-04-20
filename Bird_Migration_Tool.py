@@ -591,8 +591,11 @@ with tabs[3]:
     )
 with tabs[4]:
     st.header("Geluidreferenties")
-    # Eenvoudige Flight Call Database
-<iframe src='https://xeno-canto.org/977383/embed?simple=1' scrolling='no' frameborder='0' width='340' height='115'></iframe>    
+# Embed iframe in tabblad 1
+    st.components.v1.html("""
+    <iframe src='https://xeno-canto.org/977383/embed?simple=1' scrolling='no' frameborder='0' width='340' height='115'></iframe>
+    """, height=120)
+
 with tabs[5]:
     st.header("Handleiding")
     # Eenvoudige handleiding
