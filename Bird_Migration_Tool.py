@@ -590,7 +590,7 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
-    st.header("🎧 Roodkeelpieper – Flight calls met sonogram")
+    st.header("🎧 Roodkeelpieper – Vluchtroepen met sonogram")
 
     html_code = """
     <html>
@@ -615,7 +615,7 @@ with tabs[4]:
             <p><strong>Fragment 1</strong></p>
             <img src="https://xeno-canto.org/sounds/uploaded/HMZOOEGHGE/sonogram.gif" alt="Sonogram">
             <audio controls>
-                <source src="https://xeno-canto.org/977383/download" type="audio/mpeg">
+                <source src="https://xeno-canto.org/938828/download" type="audio/mpeg">
                 Je browser ondersteunt geen audio.
             </audio>
         </div>
@@ -624,7 +624,7 @@ with tabs[4]:
             <p><strong>Fragment 2</strong></p>
             <img src="https://xeno-canto.org/sounds/uploaded/FWZLYDQXJO/sonogram.gif" alt="Sonogram">
             <audio controls>
-                <source src="https://xeno-canto.org/977384/download" type="audio/mpeg">
+                <source src="https://xeno-canto.org/731787/download" type="audio/mpeg">
                 Je browser ondersteunt geen audio.
             </audio>
         </div>
@@ -633,7 +633,7 @@ with tabs[4]:
             <p><strong>Fragment 3</strong></p>
             <img src="https://xeno-canto.org/sounds/uploaded/LBJKXCGYMQ/sonogram.gif" alt="Sonogram">
             <audio controls>
-                <source src="https://xeno-canto.org/977385/download" type="audio/mpeg">
+                <source src="https://xeno-canto.org/934873/download" type="audio/mpeg">
                 Je browser ondersteunt geen audio.
             </audio>
         </div>
@@ -642,7 +642,7 @@ with tabs[4]:
             <p><strong>Fragment 4</strong></p>
             <img src="https://xeno-canto.org/sounds/uploaded/ATJKXLXUXI/sonogram.gif" alt="Sonogram">
             <audio controls>
-                <source src="https://xeno-canto.org/977386/download" type="audio/mpeg">
+                <source src="https://xeno-canto.org/675707/download" type="audio/mpeg">
                 Je browser ondersteunt geen audio.
             </audio>
         </div>
@@ -651,7 +651,7 @@ with tabs[4]:
             <p><strong>Fragment 5</strong></p>
             <img src="https://xeno-canto.org/sounds/uploaded/KOJWGVUIRS/sonogram.gif" alt="Sonogram">
             <audio controls>
-                <source src="https://xeno-canto.org/977387/download" type="audio/mpeg">
+                <source src="https://xeno-canto.org/933814/download" type="audio/mpeg">
                 Je browser ondersteunt geen audio.
             </audio>
         </div>
@@ -660,7 +660,7 @@ with tabs[4]:
             <p><strong>Fragment 6</strong></p>
             <img src="https://xeno-canto.org/sounds/uploaded/FDFVXLNTTP/sonogram.gif" alt="Sonogram">
             <audio controls>
-                <source src="https://xeno-canto.org/977388/download" type="audio/mpeg">
+                <source src="https://xeno-canto.org/903174/download" type="audio/mpeg">
                 Je browser ondersteunt geen audio.
             </audio>
         </div>
@@ -668,7 +668,7 @@ with tabs[4]:
     </html>
     """
 
-    st.components.v1.html(html_code, height=1100, scrolling=True)
+    st.components.v1.html(html_code, height=1200, scrolling=True)
 
 
 with tabs[5]:
