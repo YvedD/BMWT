@@ -278,6 +278,19 @@ if "gps_format" in st.session_state:
         with st.sidebar:
              st_folium(m, width=300, height=300)  # Pas grootte hier aan
 
+# Functie om opnames op te halen van xeno-canto
+def get_recordings(genus, lat, lon, max_results=6):
+    query = f'gen:{genus} type:"flight call" q:A'
+    url = f'https://xeno-canto.org/api/2/recordings?query={query}'
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()
+        recordings = data.get('recordings', [])[:max_results]
+        return recordings
+    else:
+        return []
+
+
 # Titel en beschrijving boven de tabbladen
 st.title("Bird Migration Weather Tool")
 st.markdown("""
@@ -288,7 +301,7 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 
 # Hoofdvenster met tabbladen
 #tabs = st.tabs(["Weergegevens", "Voorspellingen", "Vliegbeelden", "Geluiden-zangvogels", "Geluiden-steltlopers", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Crane Radar", "Gebruiksaanwijzing"])
-tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "Kraanvogel Radar", "Gebruiksaanwijzing"])
+tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "Kraanvogel Radar", "Geluidreferenties","Gebruiksaanwijzing"])
 
 
 # Tab 0: Weergeven van de gegevens
@@ -577,6 +590,46 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
+    st.header("Geluidreferenties")
+    # Eenvoudige Flight Call Database
+    # Streamlit-applicatie
+    st.title("🎶 Vogelgeluiden per Geslacht")
+
+    # Controleer of lat en lon in session_state zijn opgeslagen
+    if "lat" not in st.session_state or "lon" not in st.session_state:
+        st.error("Latitude en Longitude zijn niet ingesteld. Stel eerst een locatie in.")
+        st.stop()
+
+    # Haal lat en lon op uit session_state
+    lat = st.session_state.lat
+    lon = st.session_state.lon
+
+    # Lijst van gewenste geslachten
+    genera = ["Turdus", "Anthus", "Motacilla", "Parus", "Emberiza"]
+    genus_nl = {
+        "Turdus": "Lijsters en aanverwanten",
+        "Anthus": "Piepers",
+        "Motacilla": "Kwikstaarten",
+        "Parus": "Mezen",
+        "Emberiza": "Gorzen"
+    }
+
+    # Selecteer een geslacht
+    selected_genus = st.selectbox("Selecteer een vogelgeslacht:", genera, format_func=lambda x: genus_nl.get(x, x))
+
+    # Haal opnames op voor het geselecteerde geslacht
+    recordings = get_recordings(selected_genus, lat, lon)
+
+    # Toon de opnames
+    if recordings:
+        st.subheader(f"🎧 Opnames voor {genus_nl.get(selected_genus, selected_genus)}")
+        for rec in recordings:
+            st.markdown(f"**{rec.get('en', 'Onbekende soort')}** - {rec.get('loc', 'Onbekende locatie')} ({rec.get('cnt', '')})")
+            st.audio(f"https:{rec.get('file')}", format="audio/mp3")
+    else:
+        st.warning("Geen opnames gevonden voor dit geslacht op deze locatie.")
+    
+with tabs[5]:
     st.header("Handleiding")
     # Eenvoudige handleiding
     st.text("""
