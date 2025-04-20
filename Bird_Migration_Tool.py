@@ -303,7 +303,7 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 
 # Hoofdvenster met tabbladen
 #tabs = st.tabs(["Weergegevens", "Voorspellingen", "Vliegbeelden", "Geluiden-zangvogels", "Geluiden-steltlopers", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Crane Radar", "Gebruiksaanwijzing"])
-tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "Kraanvogel Radar", "Geluidreferenties","Gebruiksaanwijzing"])
+tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "Kraanvogel Radar", "🎧 Vluchtroepen","Gebruiksaanwijzing"])
 
 
 # Tab 0: Weergeven van de gegevens
@@ -594,19 +594,17 @@ with tabs[3]:
 
 
 with tabs[4]:
-    st.text("🎧 Vluchtroepen – Selecteer een soort")
-
     # Dropdown met soorten uit de config
     geselecteerde_soort = st.selectbox("Kies een soort:", list(iframe_data.keys()))
 
-    st.text(f"{geselecteerde_soort} – 6 vluchtroepfragmenten")
+    st.text(f"{geselecteerde_soort} – 6 flightcalls")
 
     # HTML bouwen voor de gekozen soort
     iframes = iframe_data[geselecteerde_soort]
     iframe_html = "<div style='display: flex; flex-direction: column; gap: 20px;'>"
 
     for url in iframes:
-        iframe_html += f"<iframe src='{url}' scrolling='no' frameborder='0' width='340' height='220'></iframe>"
+        iframe_html += f"<iframe src='{url}' scrolling='no' frameborder='0' width='440' height='300'></iframe>"
 
     iframe_html += "</div>"
 
