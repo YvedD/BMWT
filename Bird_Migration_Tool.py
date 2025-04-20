@@ -590,10 +590,10 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
-    st.header("🎧 Roodkeelpieper – 6 geselecteerde fragmenten")
+    st.header("🎧 Roodkeelpieper – Vluchtroepen")
 
-    # Vaste lijst van ID’s en sonogram-codes (mapnamen)
-    recordings = [
+    # Zelfgekozen vluchtroepfragmenten (ID + sonogram-mapcode)
+    vluchtroepen = [
         {"id": "977383", "sonogram": "HMZOOEGHGE"},
         {"id": "977384", "sonogram": "FWZLYDQXJO"},
         {"id": "977385", "sonogram": "LBJKXCGYMQ"},
@@ -602,11 +602,11 @@ with tabs[4]:
         {"id": "977388", "sonogram": "FDFVXLNTTP"},
     ]
 
-    for i, rec in enumerate(recordings, 1):
+    for i, fragment in enumerate(vluchtroepen, 1):
         st.subheader(f"Fragment {i}")
-        sono_url = f"https://xeno-canto.org/sounds/uploaded/{rec['sonogram']}/sonogram.gif"
-        audio_url = f"https://xeno-canto.org/{rec['id']}/download"
-        st.image(sono_url, caption="Sonogram", use_column_width=True)
+        sono_url = f"https://xeno-canto.org/sounds/uploaded/{fragment['sonogram']}/sonogram.gif"
+        audio_url = f"https://xeno-canto.org/{fragment['id']}/download"
+        #st.image(sono_url, caption="Sonogram", use_column_width=False)
         st.audio(audio_url)
 
 
