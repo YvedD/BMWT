@@ -620,15 +620,16 @@ with tabs[4]:
     # Haal opnames op voor het geselecteerde geslacht
     recordings = get_recordings(selected_genus, lat, lon)
 
-    # Toon de opnames
-    if recordings:
-        st.subheader(f"🎧 Opnames voor {genus_nl.get(selected_genus, selected_genus)}")
-        for rec in recordings:
-            st.markdown(f"**{rec.get('en', 'Onbekende soort')}** - {rec.get('loc', 'Onbekende locatie')} ({rec.get('cnt', '')})")
-            st.audio(f"https:{rec.get('file')}", format="audio/mp3")
-    else:
-        st.warning("Geen opnames gevonden voor dit geslacht op deze locatie.")
-    
+    for rec in recordings:
+        st.markdown(f"""
+        **{rec.get('en', 'Onbekende soort')}**  
+        📍 {rec.get('loc', 'Onbekende locatie')} ({rec.get('cnt', '')})  
+        🎧  
+        <audio controls style="width: 100%;">
+            <source src="https:{rec.get('file')}" type="audio/mpeg">
+            Jouw browser ondersteunt het audio-element niet.
+        </audio>
+        """, unsafe_allow_html=True)    
 with tabs[5]:
     st.header("Handleiding")
     # Eenvoudige handleiding
