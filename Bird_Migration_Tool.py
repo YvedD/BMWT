@@ -590,25 +590,34 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
-    # Dropdownlijst voor het kiezen van het iframe
+    # Dropdownlijst voor het kiezen van het geluid
     iframe_choice = st.selectbox(
-        "Kies een iframe om te tonen:",
-        ["Roodkeelpieper", "Xeno-Canto 2"]  # Voeg hier de titels van je iframes toe
+        "Kies een geluid van de vogel:",
+        [
+            "Geluid 1", 
+            "Geluid 2", 
+            "Geluid 3", 
+            "Geluid 4", 
+            "Geluid 5", 
+            "Geluid 6"
+        ]
     )
 
-    # Afhankelijk van de keuze, toon het juiste iframe
-    if iframe_choice == "Xeno-Canto 1":
-        st.components.v1.html("""
-        <iframe src='https://xeno-canto.org/977383/embed?simple=1' scrolling='no' frameborder='0' width='340' height='115'></iframe>
-        """, height=120)
-        st.components.v1.html("""
-        <iframe src='https://xeno-canto.org/977384/embed?simple=1' scrolling='no' frameborder='0' width='340' height='115'></iframe>
-        """, height=120)
+    # Links naar de verschillende geluiden van dezelfde vogel
+    sounds = {
+        "Geluid 1": "https://xeno-canto.org/977383/embed?simple=1",
+        "Geluid 2": "https://xeno-canto.org/977384/embed?simple=1",
+        "Geluid 3": "https://xeno-canto.org/977385/embed?simple=1",
+        "Geluid 4": "https://xeno-canto.org/977386/embed?simple=1",
+        "Geluid 5": "https://xeno-canto.org/977387/embed?simple=1",
+        "Geluid 6": "https://xeno-canto.org/977388/embed?simple=1"
+    }
 
-    elif iframe_choice == "Xeno-Canto 2":
-        st.components.v1.html("""
-        <iframe src='https://xeno-canto.org/977384/embed?simple=1' scrolling='no' frameborder='0' width='340' height='115'></iframe>
-        """, height=120)
+    # Toon het iframe op basis van de keuze van de gebruiker
+    st.components.v1.html(f"""
+    <iframe src='{sounds[iframe_choice]}' scrolling='no' frameborder='0' width='340' height='115'></iframe>
+    """, height=120)
+
 with tabs[5]:
     st.header("Handleiding")
     # Eenvoudige handleiding
