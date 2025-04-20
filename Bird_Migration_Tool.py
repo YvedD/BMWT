@@ -590,32 +590,24 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
+    st.header("🎧 Roodkeelpieper – 6 geselecteerde fragmenten")
 
-    API_KEY = "83480bce2ae2e6e988c3bd8fc79aea17161dc750	"  # ← voeg je eigen key hier in
+    # Vaste lijst van ID’s en sonogram-codes (mapnamen)
+    recordings = [
+        {"id": "977383", "sonogram": "HMZOOEGHGE"},
+        {"id": "977384", "sonogram": "FWZLYDQXJO"},
+        {"id": "977385", "sonogram": "LBJKXCGYMQ"},
+        {"id": "977386", "sonogram": "ATJKXLXUXI"},
+        {"id": "977387", "sonogram": "KOJWGVUIRS"},
+        {"id": "977388", "sonogram": "FDFVXLNTTP"},
+    ]
 
-    query = 'sp:"Anthus cervinus"'
-    url = "https://xeno-canto.org/api/3/recordings"
-    params = {
-        "query": query,
-        "key": API_KEY,
-        "per_page": 6
-    }
-
-    response = requests.get(url, params=params)
-
-    if response.status_code == 200:
-        data = response.json()
-        recordings = data.get("recordings", [])
-
-        st.header("🎧 Roodkeelpieper – Vluchtroepen met sonogram")
-
-        for i, rec in enumerate(recordings, 1):
-            st.subheader(f"Fragment {i}")
-            st.markdown(f"📍 *{rec['loc']}*, 🎙️ {rec['rec']}, 📅 {rec['date']}")
-            st.image(rec['sono']['small'], caption="Sonogram", use_column_width=True)
-            st.audio(rec["file"])
-    else:
-        st.error("Fout bij ophalen van opnames.")
+    for i, rec in enumerate(recordings, 1):
+        st.subheader(f"Fragment {i}")
+        sono_url = f"https://xeno-canto.org/sounds/uploaded/{rec['sonogram']}/sonogram.gif"
+        audio_url = f"https://xeno-canto.org/{rec['id']}/download"
+        st.image(sono_url, caption="Sonogram", use_column_width=True)
+        st.audio(audio_url)
 
 
 with tabs[5]:
