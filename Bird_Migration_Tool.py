@@ -11,6 +11,7 @@ from io import BytesIO
 import time
 from geopy.exc import GeocoderUnavailable
 import streamlit.components.v1 as components
+from soorten_iframes import iframe_data  # 👈 importeer uit het aparte bestand
 
 st.set_page_config(
     page_title="Bird Migration Weather Tool",
@@ -590,20 +591,25 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 
+
 with tabs[4]:
-    st.header("🎧 Roodkeelpieper – Vluchtroep (via embedded Xeno-Canto players)")
+    st.header("🎧 Vluchtroepen – Selecteer een soort")
 
-    iframe_html = """
-    <div style="display: flex; flex-direction: column; gap: 20px;">
-        <iframe src='https://xeno-canto.org/984486/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
-        <iframe src='https://xeno-canto.org/977384/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
-        <iframe src='https://xeno-canto.org/977383/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
-        <iframe src='https://xeno-canto.org/958045/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
-        <iframe src='https://xeno-canto.org/942687/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
-        <iframe src='https://xeno-canto.org/123456/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
-    </div>
-    """
+    # Dropdown met soorten uit de config
+    geselecteerde_soort = st.selectbox("Kies een soort:", list(iframe_data.keys()))
 
+    st.subheader(f"{geselecteerde_soort} – 6 vluchtroepfragmenten")
+
+    # HTML bouwen voor de gekozen soort
+    iframes = iframe_data[geselecteerde_soort]
+    iframe_html = "<div style='display: flex; flex-direction: column; gap: 20px;'>"
+
+    for url in iframes:
+        iframe_html += f"<iframe src='{url}' scrolling='no' frameborder='0' width='340' height='220'></iframe>"
+
+    iframe_html += "</div>"
+
+    # Spelers tonen
     components.html(iframe_html, height=1400)
 
 
