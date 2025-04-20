@@ -11,7 +11,7 @@ from io import BytesIO
 import time
 from geopy.exc import GeocoderUnavailable
 import streamlit.components.v1 as components
-from soorten_iframes import iframe_data  # 👈 importeer uit het aparte bestand
+from soorten_geluiden import iframe_data  # 👈 importeer uit het aparte bestand
 
 st.set_page_config(
     page_title="Bird Migration Weather Tool",
