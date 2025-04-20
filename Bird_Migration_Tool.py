@@ -590,19 +590,15 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
-    # Vervang dit door je eigen API-sleutel
-    API_KEY = "83480bce2ae2e6e988c3bd8fc79aea17161dc750"
 
-    # Queryparameters
+    API_KEY = "83480bce2ae2e6e988c3bd8fc79aea17161dc750	"  # ← voeg je eigen key hier in
+
     query = 'sp:"Anthus cervinus"'
-    per_page = 6  # Aantal opnames om op te halen
-
-    # API-aanroep
     url = "https://xeno-canto.org/api/3/recordings"
     params = {
         "query": query,
         "key": API_KEY,
-        "per_page": per_page
+        "per_page": 6
     }
 
     response = requests.get(url, params=params)
@@ -611,19 +607,15 @@ with tabs[4]:
         data = response.json()
         recordings = data.get("recordings", [])
 
-        # Streamlit-tabblad
         st.header("🎧 Roodkeelpieper – Vluchtroepen met sonogram")
 
-        for idx, rec in enumerate(recordings, start=1):
-            st.subheader(f"Fragment {idx}")
-            # Sonogramafbeelding
-            sonogram_url = f"https://xeno-canto.org/sounds/uploaded/{rec['file'].split('/')[2]}/sonogram.gif"
-            st.image(sonogram_url, caption="Sonogram", use_column_width=True)
-            # Audioplayer
-            audio_url = f"https://xeno-canto.org/{rec['id']}/download"
-            st.audio(audio_url)
+        for i, rec in enumerate(recordings, 1):
+            st.subheader(f"Fragment {i}")
+            st.markdown(f"📍 *{rec['loc']}*, 🎙️ {rec['rec']}, 📅 {rec['date']}")
+            st.image(rec['sono']['small'], caption="Sonogram", use_column_width=True)
+            st.audio(rec["file"])
     else:
-        st.error(f"Fout bij het ophalen van gegevens: {response.status_code}")
+        st.error("Fout bij ophalen van opnames.")
 
 
 with tabs[5]:
