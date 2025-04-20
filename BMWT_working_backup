@@ -1,6 +1,5 @@
-
 import streamlit as st
-from geopy.geocoders import Nominatim
+from geopy.geocoders import Nominatim, OpenCage
 import folium
 import requests
 from streamlit_folium import st_folium
@@ -9,6 +8,8 @@ from datetime import date, datetime
 from dateutil.parser import parse
 import pytz
 from io import BytesIO
+import time
+from geopy.exc import GeocoderUnavailable
 import streamlit.components.v1 as components
 
 st.set_page_config(
@@ -31,7 +32,7 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 # Configuratie voor API headers
 API_HEADERS = {
     "User-Agent": "Bird Migration Weather Tool (contact: ydsdsy@gmail.com)",  # Pas hier je contactgegevens aan
-    "From": "ydsdsu@gmail.com"  # Dit geeft aan wie contact kan worden opgenomen
+    "From": "ydsdsy@gmail.com"  # Dit geeft aan wie contact kan worden opgenomen
 }
 
 # CSS toevoegen om de sidebar-breedte aan te passen
@@ -59,38 +60,21 @@ eu_landen = [
     "IJsland","Ierland","Israel","Italië","Kazachstan","Kosovo","Kroatie","Letland","Liechtenstein","Litouwen",
     "Luxemburg","Malta","Moldavië","Monaco","Montenegro","Noorwegen","Oekraïne","Oostenrijk","Polen",
     "Portugal","Roemenië","San Marino","Servië","Slovenië","Slowakije","Spanje","Tsjechië","Turkije",
-    "Vaticaanstad","Verenigd Koninkrijk","Wit-Rusland"
+    "Vaticaanstad","Verenigd Koninkrijk","Wit-Rusland","Zweden","Canada","Verenigde staten","Mexico"
 ]
 
 # Standaardwaarden voor locatie, datum en uren
 default_land = "Kies een land"
 default_locatie = "Locatie"
 default_datum = date.today()
-default_hours = (8, 18)
-default_start = (8)
-default_end=(18)
+default_hours = (6, 19)
+default_start = (6)
+default_end=(19)
 
 # Sidebar configuratie
 land_keuze = st.sidebar.selectbox("Land", eu_landen, index=eu_landen.index(default_land))
 locatie_keuze = st.sidebar.text_input("Locatie", value=default_locatie)
-geselecteerde_datum = st.sidebar.date_input("Datum (vandaag of eerder !):", value=default_datum, min_value=date(2000, 1, 1))
-
-# Functie om de uitvoer te formatteren met SVG
-def format_regel_with_svg(time, temp, precip, cloud, cloud_low, cloud_mid, cloud_high, wind_dir, wind_speed_10m, wind_speed_80m, wind_speed_120m, wind_speed_180m, visibility, wind_direction_deg):
-    wind_icon_svg = create_wind_icon(wind_direction_deg)
-    regel = (
-        f"🕒:{time}: 🌡️:{temp:.1f}°C, 🌧️:{precip:.1f}mm, ☁️:{cloud:03}%, "
-        f"☁️L:{cloud_low:03}%, ☁️M:{cloud_mid:03}%, ☁️H:{cloud_high:03}%, "
-        f"🧭:{wind_dir}, 💨 @10m:{wind_speed_10m}, 💨 @80m:{wind_speed_80m}, "
-        f"💨 @120m:{wind_speed_120m}, 💨 @180m:{wind_speed_180m}, 👁️:{visibility:.1f}km"
-    )
-    regel_html = f"""
-    <div style="display: flex; align-items: center; margin-bottom: 5px;">
-        <span>{regel}</span>
-        <div style="margin-left: 10px;">{wind_icon_svg}</div>
-    </div>
-    """
-    return regel_html
+geselecteerde_datum = st.sidebar.date_input("Datum (vandaag of max. 2 jaar eerder !):", value=default_datum, min_value=date(2000, 1, 1))
 
 # Functie om graden naar windrichting te converteren
 def graden_naar_windrichting(graden):
@@ -111,13 +95,33 @@ def kmh_naar_beaufort(kmh):
 
 # Functie om geolocatie op te zoeken
 def toon_geolocatie_op_kaart(locatie):
-    geolocator = Nominatim(user_agent="weather_app")  # Geen language hier in constructor
-    locatie_data = geolocator.geocode(locatie, exactly_one=True, language="en")  # Taal instellen op Engels
-    if locatie_data:
-        return locatie_data.latitude, locatie_data.longitude, locatie_data.address
-    else:
-        st.error(f"De locatie {locatie} kan niet gevonden worden.")
-        return None, None, None
+    # Probeer eerst Nominatim
+    geolocator_nominatim = Nominatim(user_agent="Bird_Migration_Weather_Tool")
+    try:
+        locatie_data = geolocator_nominatim.geocode(locatie, exactly_one=True, language="en")
+        if locatie_data:
+            return locatie_data.latitude, locatie_data.longitude, locatie_data.address
+        else:
+            st.error(f"De locatie {locatie} kan niet gevonden worden.")
+            return None, None, None
+    except GeocoderUnavailable:
+        # Als Nominatim niet beschikbaar is, probeer OpenCage
+        st.warning("Nominatim is niet beschikbaar, overschakelen naar OpenCage...")
+        
+        geolocator_opencage = OpenCage(api_key="b1f4bbd95b90415da9c04e261fe331d7")
+        try:
+            locatie_data = geolocator_opencage.geocode(locatie, exactly_one=True, language="en")
+            if locatie_data:
+                return locatie_data.latitude, locatie_data.longitude, locatie_data.address
+            else:
+                st.error(f"De locatie {locatie} kan niet gevonden worden in OpenCage.")
+                return None, None, None
+        except GeocoderUnavailable:
+            st.error("OpenCage is ook niet beschikbaar. Probeer het later opnieuw.")
+            return None, None, None
+        except Exception as e:
+            st.error(f"Er is een onverwachte fout opgetreden: {e}")
+            return None, None, None
 
 # Functie om weergegevens op te halen
 #@st.cache_data
@@ -127,7 +131,7 @@ def get_weather_data_historical(lat, lon, selected_date):
     if response.status_code == 200:
         return response.json()
     else:
-        st.error("Fout bij het ophalen van weergegevens.")
+        st.error("Serverfout bij het ophalen van weergegevens (onderhoud) - probeer het later opnieuw.")
         return None
 
 # Functie om de zonsopgang- en zonsondergangtijd veilig op te halen
@@ -152,25 +156,42 @@ def haal_zonsopgang_en_zonsondergang(weather_data):
         st.warning("Weergegevens ontbreken of zijn niet correct opgehaald.")
         return None, None
 
-def create_wind_icon(degree):
-    if degree is None:
-        return "N/B"
+# Functie voor het weergeven van de regels in een mooi formaat (zonder SVG, enkel tekst en iconen)
+def format_regel_with_icons(time, temperature, precipitation, cloud_cover_low, cloud_cover_mid, cloud_cover_high, wind_direction, wind_speed_10m, wind_speed_80m, visibility):
+    return (
+        f"<br>🕒:{time:<4}|🌡️{temperature:>4.1f}°C|🌧️{precipitation:>2.1f}mm|"
+        f"☁️L:{cloud_cover_low:>3}%|☁️M:{cloud_cover_mid:>3}%|☁️H:{cloud_cover_high:>3}%|"
+        f"🧭:{wind_direction:<3}{wind_speed_10m:>2}Bf|💨@80m:{wind_speed_80m:>2}Bf|👁️:{visibility:>4.1f}km"
+    )
 
-    # Bereken de windrichting in graden voor de pijl (de pijl wijst de andere kant op, dus 180 graden verschuiven)
-    arrow_degree = (degree + 180) % 360
+# Functie voor het genereren van excel uitvoer
+def regels_naar_excel(regels):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        # Vervang "<br>" door een lege string en splits regels op het pipe-teken
+        data = [regel.replace("<br>", "").split("|") for regel in regels]  # Verwijder <br>
+        df = pd.DataFrame(data)  # Zet de gesplitste regels in een DataFrame
+        df.to_excel(writer, index=False, sheet_name='Kopieerbare Regels', header=False)
+        return output.getvalue()
 
-    # SVG voor de pijl, gecentreerd in een box
-    arrow_svg = f"""
-    <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
-        <svg width="30" height="30" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <g transform="rotate({arrow_degree}, 50, 50)">
-                <polygon points="50,5 60,35 50,25 40,35" fill="blue"/>
-                <line x1="50" y1="25" x2="50" y2="85" stroke="blue" stroke-width="12"/>
-            </g>
-        </svg>
-    </div>
-    """
-    return arrow_svg
+# Functie om de weerdata op te halen
+def get_weather_data_forecast():
+    response = requests.get(API_URL)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.error(f"Error fetching data from API: {response.status_code}")
+        return None
+
+# Functie om dataframe op te slaan als Excel
+def to_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Gegevens')
+        processed_data = output.getvalue()
+        return processed_data
+
+
 
 # Controleer wijzigingen in invoer (gebruik session_state)
 if "last_locatie" not in st.session_state:
@@ -266,17 +287,11 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 
 
 # Hoofdvenster met tabbladen
-tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Gebruiksaanwijzing"])
+#tabs = st.tabs(["Weergegevens", "Voorspellingen", "Vliegbeelden", "Geluiden-zangvogels", "Geluiden-steltlopers", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Crane Radar", "Gebruiksaanwijzing"])
+tabs = st.tabs(["Weergegevens", "Voorspellingen", "CROW project", "Kraanvogel Radar", "Gebruiksaanwijzing"])
 
-# Functie voor het weergeven van de regels in een mooi formaat (zonder SVG, enkel tekst en iconen)
-def format_regel_with_icons(time, temperature, precipitation, cloud_cover, cloud_cover_low, cloud_cover_mid, cloud_cover_high, wind_direction, wind_speed_10m, wind_speed_80m, wind_speed_120m, wind_speed_180m, visibility):
-    return (
-        f"<br>🕒:{time:<4}|🌡️{temperature:>3.1f}°C|🌧️{precipitation:>2.1f}mm|"
-        f"☁️L:{cloud_cover_low:>3}%|☁️M:{cloud_cover_mid:>3}%|☁️H:{cloud_cover_high:>3}%|"        #☁️Tot.:{cloud_cover:>3}%|)"
-        f"🧭:{wind_direction:<3}|💨@10m:{wind_speed_10m:>2}Bf|💨@80m:{wind_speed_80m:>2}Bf|"
-        f"💨@120m:{wind_speed_120m:>2}Bf|👁️ {visibility:>4.1f}km"                                 #|💨@180m:{wind_speed_180m:>2}Bf
-    )
 
+# Tab 0: Weergeven van de gegevens
 # Tab 0: Weergeven van de gegevens
 with tabs[0]: #dit is het meest linkse tabblad
     # Data ophalen en verwerken
@@ -333,19 +348,18 @@ with tabs[0]: #dit is het meest linkse tabblad
         kopieerbare_regels = [
             format_regel_with_icons(
                 pd.to_datetime(row['time'], format='%H:%M').strftime('%H:%M'),
-                row['temperature_2m'], row['precipitation'], row['cloud_cover'],
+                row['temperature_2m'], row['precipitation'],
                 row['cloud_cover_low'], row['cloud_cover_mid'], row['cloud_cover_high'],
                 graden_naar_windrichting(row['wind_direction_10m']),
                 kmh_naar_beaufort(row['wind_speed_10m']),
                 kmh_naar_beaufort(row['wind_speed_80m']),
-                kmh_naar_beaufort(row['wind_speed_120m']),
-                kmh_naar_beaufort(row['wind_speed_180m']),
                 row['visibility'] / 1000
             )
             for _, row in filtered_data.iterrows()
         ]
 
-        # Gebruiker kiest hoe gegevens worden gekopieerd
+
+# Gebruiker kiest hoe gegevens worden gekopieerd
         kopieer_optie = st.radio("Hoe wil je de gegevens kopiëren?", ["Alles in één blok", "Regel per regel"])
 
         if kopieer_optie == "Alles in één blok":
@@ -359,14 +373,6 @@ with tabs[0]: #dit is het meest linkse tabblad
                 # Gebruik st.markdown voor inline weergave en st.code voor kopieerbare tekst
                 st.code(regel, language="text")  # Zorg ervoor dat elke regel apart gekopieerd kan worden
 
-        def regels_naar_excel(regels):
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                # Vervang "<br>" door een lege string en splits regels op het pipe-teken
-                data = [regel.replace("<br>", "").split("|") for regel in regels]  # Verwijder <br>
-                df = pd.DataFrame(data)  # Zet de gesplitste regels in een DataFrame
-                df.to_excel(writer, index=False, sheet_name='Kopieerbare Regels', header=False)
-            return output.getvalue()
 
         # Controleer of er regels zijn
         if kopieerbare_regels:
@@ -382,8 +388,45 @@ with tabs[0]: #dit is het meest linkse tabblad
             )
         else:
             st.write("Geen regels beschikbaar om te exporteren.")
+
+
+# hier de code voor het tweede tabblad (voorspellingen)
 with tabs[1]:
-    col1, col2 = st.columns([0.55,0.45])
+    st.text("""
+        Handleiding voor de Windy widget:
+        Kies een locatie naar keuze om onderaan de weerkaart de meest recente voorspellingen te verkrijgen.
+        Zoom in of uit op de kaart om een preciezere locatie te kiezen voor deze voorspellingen.
+        Zoom uit om een breder weerbeeld te verkrijgen.
+        Klik bovenaan rechts om andere lagen te verkrijgen (bewolking, temperatuur, wind, sateliet, ...)"""
+    )
+
+    # Beschikbare overlays en de corresponderende Windy API-waarden
+    overlays = {
+        "Wind": "wind",
+        "Mist": "fog",
+        "Lage bewolking": "lclouds",
+        "Middelbare bewolking": "mclouds",
+        "Neerslag": "rain",
+        "Thermiek": "ccl",
+        "Zicht": "visibility"
+    }
+
+    # Initieer session_state als het nog niet bestaat
+    if "windy_overlay" not in st.session_state:
+        st.session_state.windy_overlay = "Wind"  # Standaard overlay
+
+    # Callback functie om de overlay aan te passen
+    def update_windy():
+        st.session_state.windy_overlay = st.session_state.overlay_select
+
+    # Dropdown voor overlay-selectie met `on_change`
+    st.selectbox(
+        "Kies een overlay:", 
+        list(overlays.keys()), 
+        index=list(overlays.keys()).index(st.session_state.windy_overlay),
+        key="overlay_select", 
+        on_change=update_windy
+    )
 
     # Controleer of sessiestatus waarden bevat
     if "lat" not in st.session_state or "lon" not in st.session_state:
@@ -407,244 +450,133 @@ with tabs[1]:
         "&forecast_days=7"
     )
 
-    #st.write(f"API URL: {API_URL}")
-
-    # Functie om de weerdata op te halen
-    #@st.cache_data
-    def get_weather_data_forecast():
-        response = requests.get(API_URL)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            st.error(f"Error fetching data from API: {response.status_code}")
-            return None
-
-
     # Haal de weerdata op
     weather_data_forecast = get_weather_data_forecast()
 
-    # Veronderstel dat we in tabblad2 zitten, met column1 zichtbaar
-    #tab2 = st.beta_expander("Tabblad 2: Weersvoorspellingen")  # Gebruik een expander voor tabblad2
-    with col1:
-        if weather_data_forecast:
-            # Toon de dagelijkse voorspelling
-            hourly_data = weather_data_forecast['hourly']
-            # Functie om windrichting te converteren naar een compasrichting
-            def richting_to_compas(graden):
-                richtingen = ['N', 'NNO', 'NO', 'ONO', 'O', 'OZO', 'ZO', 'ZZO', 'Z', 'ZZW', 'ZW', 'WZW', 'W', 'WNW',
-                              'NW', 'NNW']
-                index = int((graden % 360) / 22.5)  # Elke richting dekt 22.5 graden
-                return richtingen[index]
+    # Haal latitude en longitude op uit session_state of stel defaults in
+    lat = st.session_state.get("lat", 50.681)  # Standaardwaarde als lat niet is ingesteld
+    lon = st.session_state.get("lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
 
+    # Maak de dynamische Windy widget URL
+    windy_url = f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=7&overlay={overlays[st.session_state.windy_overlay]}&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
 
-            # Zet de data om naar een DataFrame
-            hourly_df = pd.DataFrame({
-                'Time': pd.to_datetime(hourly_data['time']),
-                'Temperatuur (°C)': [f"{temp:.1f} °C" for temp in hourly_data['temperature_2m']],
-                'Neerslag (mm)': [f"{rain:.1f}mm" for rain in hourly_data['precipitation']],
-                'Bewolking Laag (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_low']],
-                'Bewolking Middel (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_mid']],
-                'Bewolking Hoog (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_high']],
-                'Bewolking (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover']],
-                'Wind Richting': [richting_to_compas(dir) for dir in hourly_data['wind_direction_10m']],
-                'Windkracht op 10m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_10m']],
-                'Windkracht op 80m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_80m']],
-                'Zichtbaarheid (km)': [f"{int(vis / 1000)} km" for vis in hourly_data['visibility']]
-            })
+    # Streamlit Iframe in Markdown
+    st.markdown(
+        f"""
+        <iframe width="100%" height="1000" src="{windy_url}" frameborder="0"></iframe>
+        """,
+        unsafe_allow_html=True
+    )
 
-            # Voeg datum en uur toe
-            hourly_df['Datum'] = hourly_df['Time'].dt.date
-            hourly_df['Uur'] = hourly_df['Time'].dt.strftime('%H:%M')
+    if weather_data_forecast:
+        # Toon de dagelijkse voorspelling
+        hourly_data = weather_data_forecast['hourly']
 
-            # Kolomtitels aanpassen met iconen (voorbeeld)
-            hourly_df = hourly_df.rename(columns={
-                'Temperatuur (°C)': '🌡️ °C',
-                'Neerslag (mm)': '🌧️ mm',
-                'Bewolking Laag (%)': '☁️@Low %',
-                'Bewolking Middel (%)': '☁️@Mid %',
-                'Bewolking Hoog (%)': '☁️@High %',
-                'Bewolking (%)': '☁️@tot %',
-                'Wind Richting': '🧭',
-                'Windkracht op 10m (Bf)': '💨@10m',
-                'Windkracht op 80m (Bf)': '💨@80m',
-                'Zichtbaarheid (km)': '👁️ km'
-            })
+        # Functie om windrichting te converteren naar een compasrichting
+        def richting_to_compas(graden):
+            richtingen = ['N', 'NNO', 'NO', 'ONO', 'O', 'OZO', 'ZO', 'ZZO', 'Z', 'ZZW', 'ZW', 'WZW', 'W', 'WNW', 'NW', 'NNW']
+            index = int((graden % 360) / 22.5)  # Elke richting dekt 22.5 graden
+            return richtingen[index]
 
+        # Zet de data om naar een DataFrame
+        hourly_df = pd.DataFrame({
+            'Time': pd.to_datetime(hourly_data['time']),
+            'Temperatuur (°C)': [f"{temp:.1f} °C" for temp in hourly_data['temperature_2m']],
+            'Neerslag (mm)': [f"{rain:.1f}mm" for rain in hourly_data['precipitation']],
+            'Bewolking Laag (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_low']],
+            'Bewolking Middel (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_mid']],
+            'Bewolking Hoog (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_high']],
+            'Bewolking (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover']],
+            'Wind Richting': [richting_to_compas(dir) for dir in hourly_data['wind_direction_10m']],
+            'Windkracht op 10m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_10m']],
+            'Windkracht op 80m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_80m']],
+            'Zichtbaarheid (km)': [f"{int(vis / 1000)} km" for vis in hourly_data['visibility']]
+        })
 
-            # Gebruik Streamlit voor het weergeven van de data
-            st.title("Weergegevens per Uur")
+        # Voeg datum en uur toe
+        hourly_df['Datum'] = hourly_df['Time'].dt.date
+        hourly_df['Uur'] = hourly_df['Time'].dt.strftime('%H:%M')
 
-            # Voeg een multiselect toe voor kolommen die de gebruiker kan kiezen
-            geselecteerde_kolommen = st.multiselect(
-                "Selecteer de kolommen die je wilt zien (en in welke volgorde)",
-                [col for col in hourly_df.columns if col not in ['Datum', 'Uur']],
-                # We verwijderen de 'Datum' en 'Uur' kolommen hier
-                default=[col for col in hourly_df.columns if col not in ['Datum', 'Uur']]
-                # Standaard selecteren we alles behalve 'Datum' en 'Uur'
-            )
+        # Kolomtitels aanpassen met iconen
+        hourly_df = hourly_df.rename(columns={
+            'Temperatuur (°C)': '🌡️ °C',
+            'Neerslag (mm)': '🌧️ mm',
+            'Bewolking Laag (%)': '☁️@Low %',
+            'Bewolking Middel (%)': '☁️@Mid %',
+            'Bewolking Hoog (%)': '☁️@High %',
+            'Bewolking (%)': '☁️@tot %',
+            'Wind Richting': '🧭',
+            'Windkracht op 10m (Bf)': '💨@10m',
+            'Windkracht op 80m (Bf)': '💨@80m',
+            'Zichtbaarheid (km)': '👁️ km'
+        })
 
-            # De DataFrame wordt nu gefilterd op de geselecteerde kolommen en in de volgorde van de selectie
-            if geselecteerde_kolommen:
-                # Voeg de 'Uur' kolom altijd als eerste toe
-                geselecteerde_kolommen = ['Uur'] + geselecteerde_kolommen
-                ordered_df = hourly_df[['Datum'] + geselecteerde_kolommen].copy()  # Zorg dat "Datum" blijft voor groepering
+        # Streamlit Titel
+        st.title("Weergegevens per Uur")
 
-                # Groepeer de gegevens per dag en toon de tabel voor elke dag
-                for day, group in ordered_df.groupby('Datum'):
-                    st.write(f"### **{day}**")
-                    st.dataframe(group.drop(columns='Datum'), use_container_width=True)
-            else:
-                st.write("Selecteer ten minste één kolom om te tonen.")
+        # Multiselect voor kolommen
+        geselecteerde_kolommen = st.multiselect(
+            "Selecteer de kolommen die je wilt zien (en in welke volgorde)",
+            [col for col in hourly_df.columns if col not in ['Datum', 'Uur']],
+            default=[col for col in hourly_df.columns if col not in ['Datum', 'Uur']]
+        )
 
-            # Functie om dataframe op te slaan als Excel
-            def to_excel(df):
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name='Gegevens')
-                processed_data = output.getvalue()
-                return processed_data
+        # Dataframe filtering op geselecteerde kolommen
+        if geselecteerde_kolommen:
+            geselecteerde_kolommen = ['Uur'] + geselecteerde_kolommen
+            ordered_df = hourly_df[['Datum'] + geselecteerde_kolommen].copy()
 
-            # Controleer of `ordered_df` niet leeg is
-            if not ordered_df.empty:
-                # Zet `ordered_df` om naar Excel
-                excel_data = to_excel(ordered_df)
+            # Groepeer per dag en toon de tabel voor elke dag
+            for day, group in ordered_df.groupby('Datum'):
+                st.write(f"### **{day}**")
+                st.dataframe(group.drop(columns='Datum'), use_container_width=True)
+        else:
+            st.write("Selecteer ten minste één kolom om te tonen.")
 
-                # Downloadknop voor Excel bestand
-                st.download_button(
-                    label="Export Excel",
-                    data=excel_data,
-                    file_name="ordered_df.xlsx",  # Bestand krijgt een naam gebaseerd op jouw dataframe
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            else:
-                st.write("Het dataframe `ordered_df` is leeg. Voeg data toe om te downloaden.")
+        # Controleer of `ordered_df` niet leeg is
+        #if not ordered_df.empty:
+            # Zet `ordered_df` om naar Excel
+            #excel_data = to_excel(ordered_df)
 
+            # Downloadknop voor Excel bestand
+            #st.download_button(
+            #    label="Export Excel",
+            #    data=excel_data,
+            #    file_name="ordered_df.xlsx",
+            #    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            #)
+        #else:
+            #st.write("Het dataframe `ordered_df` is leeg. Voeg data toe om te downloaden.")
 
+    # Standaardwaarden instellen als ze niet bestaan
     if 'lat' not in st.session_state or 'lon' not in st.session_state:
-        st.session_state.lat = 52.3794  # Standaard locatie, pas aan naar jouw wensen
-        st.session_state.lon = 4.9009  # Standaard locatie, pas aan naar jouw wensen
-
-    # Gebruik de tweede kolom in Streamlit
-    with col2:
-        # Maak de kaart
-        forecastmap = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=6)
-
-        # Voeg een lichte basiskaart toe voor beter contrast
-        #folium.TileLayer(
-        #    tiles='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png?lang=nl',
-        #    attr='© OpenStreetMap contributors',
-        #    name='Lichte basiskaart',
-        #    control=True  # Maak de basiskaart selecteerbaar in de LayerControl
-        #).add_to(forecastmap)
-
-        # Voeg de OpenWeatherMap temperatuurlaag toe
-        tile_url_temp = f"https://tile.openweathermap.org/map/temp_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
-        folium.TileLayer(
-            tiles=tile_url_temp,
-            attr='Map data © OpenWeatherMap',
-            name="Temperatuurkaart",
-            overlay=True,
-            control=True,
-            opacity=3.0
-        ).add_to(forecastmap)
-
-        # Voeg de OpenWeatherMap neerslaglaag toe
-        tile_url_precip = f"https://tile.openweathermap.org/map/precipitation_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
-        folium.TileLayer(
-            tiles=tile_url_precip,
-            attr='Map data © OpenWeatherMap',
-            name="Neerslagkaart",
-            overlay=True,
-            control=True,
-            opacity=4.0
-        ).add_to(forecastmap)
-
-        tile_url_wind = f"https://tile.openweathermap.org/map/wind_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
-        folium.TileLayer(
-            tiles=tile_url_wind,
-            attr='Map data © OpenWeatherMap',
-            name="Windkaart",
-            overlay=True,
-            control=True,
-            opacity=3.0
-        ).add_to(forecastmap)
-
-        # Voeg de OpenWeatherMap bewolkinglaag toe
-        tile_url_cloud = f"https://tile.openweathermap.org/map/clouds_new/{{z}}/{{x}}/{{y}}.png?appid=54fb4ec132c9baed8b35a4bac2b9f9e1"
-        folium.TileLayer(
-            tiles=tile_url_cloud,
-            attr='Map data © OpenWeatherMap',
-            name="Bewolkingkaart",
-            overlay=True,
-            control=True,
-            opacity=2.0
-        ).add_to(forecastmap)
-
-        # Voeg de Esri satellietlaag toe
-        folium.TileLayer(
-            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            attr='Map data © Esri',
-            name='Satellietbeeld (40%)',
-            show=False,
-            overlay=True,
-            control=True,
-            opacity=0.4
-        ).add_to(forecastmap)
-
-
-        # Gebruik een aangepaste afbeelding als icoon
-        icon_path = 'images/Milvus1.png'  # Vervang dit door een URL of pad naar jouw afbeelding
-        custom_icon = folium.CustomIcon(icon_path, icon_size=(25, 38))
-
-        # Voeg de marker toe aan de kaart
-        folium.Marker(
-            location=[st.session_state.lat, st.session_state.lon],
-            icon=custom_icon, icon_anchor=(12.5, 38),
-            popup=locatie_keuze
-        ).add_to(forecastmap)
-
-        # hieronder alle code om de kaart te renderen
-        # Voeg een marker toe voor de locatie
-        # Maak een marker met een groene kleur en een rood 'binocular' icoon
-        #marker2 = folium.Marker(
-        #    location=[st.session_state.lat, st.session_state.lon],
-        #    icon=Icon(icon="fa-dove", prefix='fa', color='black', icon_color='white')
-        #   # Font Awesome 'binoculars' icoon
-        #)
-
-        # Voeg de marker toe aan de kaart
-        #marker2.add_to(forecastmap)
-
-        # Voeg de LayerControl toe om lagen aan of uit te schakelen
-        folium.LayerControl(position='topright').add_to(forecastmap)
-
-        # Render de kaart in Streamlit
-        st_folium(forecastmap, width=600, height=600)
-        
+        st.session_state.lat = 52.3794  # Amsterdam als standaard locatie
+        st.session_state.lon = 4.9009
 with tabs[2]:
     st.header("CROW project")
-    st.components.v1.iframe(
-        "https://www.meteo.be/services/birdDetection/#/",  # URL van de externe website
-        width=1000,  # Breedte van de iframe
-        height=2000  # Hoogte van de iframe
+    # Maak de dynamische CROW widget URL
+    CROW_url = f"https://www.meteo.be/services/birdDetection/#/"
+
+    # Streamlit Iframe in Markdown
+    st.markdown(
+        f"""
+        <iframe width="100%" height="1000" src="{CROW_url}" frameborder="1"></iframe>
+        """,
+        unsafe_allow_html=True
     )
 with tabs[3]:
-    st.header("BIRDTAM density profiles project")
-    st.components.v1.iframe(
-        "https://www.flysafe-birdtam.eu/profiles.html",  # URL van de externe website
-        width=1000,  # Breedte van de iframe
-        height=2000  # Hoogte van de iframe
+    st.header("Kraanvogel radar")
+    # Maak de dynamische Crane widget URL
+    #CROW_url = f"https://www.meteo.be/services/birdDetection/#/"
+    Crane_url = f"https://analytical.sensingclues.org/cranes/"  # URL van de externe website
+    # Streamlit Iframe in Markdown
+    st.markdown(
+        f"""
+        <iframe width="100%" height="1000" src="{Crane_url}" frameborder="1"></iframe>
+        """,
+        unsafe_allow_html=True
     )
-
 with tabs[4]:
-    st.header("Trektellen.nl (read only)")
-    st.components.v1.iframe(
-        "https://www.trektellen.nl",  # URL van de externe website
-        width=1100,  # Breedte van de iframe
-        height=2500  # Hoogte van de iframe
-    )
-
-with tabs[5]:
     st.header("Handleiding")
     # Eenvoudige handleiding
     st.text("""
@@ -653,20 +585,11 @@ with tabs[5]:
         2. Selecteer een datum voor het opvragen van historische weergegevens, dit kan vanaf vandaag tot 1 jaar terug.
         3. Gebruik de slider in de sidebar om het begin en start uur van de waarnemingen te filteren.
         4. Bekijk de weersgegevens in het tabblad "Weergegevens", hier kan je kiezen om de gegevens "regel per regel" te kopiëren of als "1 blok" te kopiëren (manueel kopiëren werkt ook d.m.v. sleepbeweging.
-           Deze gegevens zijn reeds zo opgemaakt dat ze zonder tussenstap via kopiëren/plakken in het vak "Opmerkingen weer" kunnen geplakt worden in de website van trektellen.nl.
-        5. In het tabblad "Voorspellingen" kan je de weersverwachtingen vnden voor het gekozen land en locatie. Je kan deze gegevens ook downloaden als een .CSV bestand voor verwerking in bijvoorbeeld Excel.
+           Deze gegevens zijn reeds zo opgemaakt dat ze zonder tussenstap via kopiëren/plakken in het vak "Opmerkingen weer" kunnen geplakt worden in de website van Trektellen.nl.
+        5. In het tabblad "Voorspellingen" kan je de weersverwachtingen vnden voor het gekozen land en locatie. Je kan deze gegevens ook downloaden voor verwerking in bijvoorbeeld Excel.
            Bovenaan de voorspellingen kan je eenvoudig kiezen welke voorspellingen je wenst te zien.
            Naast de kolom met de voorspellingen kan je ook een kaart van het gekozen land en locatie raadplegen via een aantal (uit te schakelen) layers.
         6. In de andere tabbladen kom je terecht op een aantal bekende, belangrijke, informatieplatformen zoals het CROW project en BIRDTAM project waar de dichtheden van migratiestromen weergegeven worden.
            Uiteraard kan je in deze context ook terecht op de webpagina van Trektellen.nl, echter kan je geen gegevens wijzigen op deze site, het weergeven van trektellen.nl is hier puur informatief bedoeld.
-        7. Voor meldingen, opmerkingen en vragen kan je terecht via mail :""")
+        7. Voor meldingen, opmerkingen en vragen kan je terecht via mail : ydsdsy@gmail.com""")
         # Een mailto-link toevoegen
-    # Windy-widget insluiten als HTML
-    windy_html = """
-    <iframe width="100%" height="450" 
-    src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=default&metricTemp=default&metricWind=default&zoom=6&overlay=wind&product=ecmwf&level=surface&lat=50.681&lon=4.768"
-    frameborder="0" sandbox="allow-scripts allow-same-origin"></iframe>
-    """
-
-    # Laad de widget in Streamlit
-    components.html(windy_html, height=450)
