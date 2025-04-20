@@ -604,12 +604,12 @@ with tabs[4]:
     iframe_html = "<div style='display: flex; flex-direction: column; gap: 20px;'>"
 
     for url in iframes:
-        iframe_html += f"<iframe src='{url}' scrolling='no' frameborder='0' width='440' height='300'></iframe>"
+        iframe_html += f"<iframe src='{url}' scrolling='no' frameborder='0' width='400' height='400'></iframe>"
 
     iframe_html += "</div>"
 
     # Spelers tonen
-    components.html(iframe_html, height=1400)
+    components.html(iframe_html, height=2400)
 
 
 with tabs[5]:
