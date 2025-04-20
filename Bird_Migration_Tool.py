@@ -590,85 +590,40 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
-    st.header("🎧 Roodkeelpieper – Vluchtroepen met sonogram")
+    # Vervang dit door je eigen API-sleutel
+    API_KEY = "83480bce2ae2e6e988c3bd8fc79aea17161dc750"
 
-    html_code = """
-    <html>
-    <head>
-        <style>
-            body { font-family: Arial; }
-            .sound-block {
-                margin-bottom: 30px;
-            }
-            img {
-                max-width: 100%;
-                border: 1px solid #ccc;
-                margin-bottom: 5px;
-            }
-            audio {
-                width: 100%;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="sound-block">
-            <p><strong>Fragment 1</strong></p>
-            <img src="https://xeno-canto.org/sounds/uploaded/HMZOOEGHGE/sonogram.gif" alt="Sonogram">
-            <audio controls>
-                <source src="https://xeno-canto.org/938828/download" type="audio/mpeg">
-                Je browser ondersteunt geen audio.
-            </audio>
-        </div>
+    # Queryparameters
+    query = 'sp:"Anthus cervinus"'
+    per_page = 6  # Aantal opnames om op te halen
 
-        <div class="sound-block">
-            <p><strong>Fragment 2</strong></p>
-            <img src="https://xeno-canto.org/sounds/uploaded/FWZLYDQXJO/sonogram.gif" alt="Sonogram">
-            <audio controls>
-                <source src="https://xeno-canto.org/731787/download" type="audio/mpeg">
-                Je browser ondersteunt geen audio.
-            </audio>
-        </div>
+    # API-aanroep
+    url = "https://xeno-canto.org/api/3/recordings"
+    params = {
+        "query": query,
+        "key": API_KEY,
+        "per_page": per_page
+    }
 
-        <div class="sound-block">
-            <p><strong>Fragment 3</strong></p>
-            <img src="https://xeno-canto.org/sounds/uploaded/LBJKXCGYMQ/sonogram.gif" alt="Sonogram">
-            <audio controls>
-                <source src="https://xeno-canto.org/934873/download" type="audio/mpeg">
-                Je browser ondersteunt geen audio.
-            </audio>
-        </div>
+    response = requests.get(url, params=params)
 
-        <div class="sound-block">
-            <p><strong>Fragment 4</strong></p>
-            <img src="https://xeno-canto.org/sounds/uploaded/ATJKXLXUXI/sonogram.gif" alt="Sonogram">
-            <audio controls>
-                <source src="https://xeno-canto.org/675707/download" type="audio/mpeg">
-                Je browser ondersteunt geen audio.
-            </audio>
-        </div>
+    if response.status_code == 200:
+        data = response.json()
+        recordings = data.get("recordings", [])
 
-        <div class="sound-block">
-            <p><strong>Fragment 5</strong></p>
-            <img src="https://xeno-canto.org/sounds/uploaded/KOJWGVUIRS/sonogram.gif" alt="Sonogram">
-            <audio controls>
-                <source src="https://xeno-canto.org/933814/download" type="audio/mpeg">
-                Je browser ondersteunt geen audio.
-            </audio>
-        </div>
+        # Streamlit-tabblad
+        st.header("🎧 Roodkeelpieper – Vluchtroepen met sonogram")
 
-        <div class="sound-block">
-            <p><strong>Fragment 6</strong></p>
-            <img src="https://xeno-canto.org/sounds/uploaded/FDFVXLNTTP/sonogram.gif" alt="Sonogram">
-            <audio controls>
-                <source src="https://xeno-canto.org/903174/download" type="audio/mpeg">
-                Je browser ondersteunt geen audio.
-            </audio>
-        </div>
-    </body>
-    </html>
-    """
-
-    st.components.v1.html(html_code, height=1200, scrolling=True)
+        for idx, rec in enumerate(recordings, start=1):
+            st.subheader(f"Fragment {idx}")
+            # Sonogramafbeelding
+            sonogram_url = f"https://xeno-canto.org/sounds/uploaded/{rec['file'].split('/')[2]}/sonogram.gif"
+            st.image(sonogram_url, caption="Sonogram", use_column_width=True)
+            # Audioplayer
+            audio_url = f"https://xeno-canto.org/{rec['id']}/download"
+            st.audio(audio_url)
+    else:
+        st.error(f"Fout bij het ophalen van gegevens: {response.status_code}")
 
 
 with tabs[5]:
