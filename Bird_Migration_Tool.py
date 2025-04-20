@@ -589,25 +589,22 @@ with tabs[3]:
         """,
         unsafe_allow_html=True
     )
+
 with tabs[4]:
-    st.header("🎧 Roodkeelpieper – Vluchtroepen")
+    st.header("🎧 Roodkeelpieper – Vluchtroep (via embedded Xeno-Canto players)")
 
-    # Zelfgekozen vluchtroepfragmenten (ID + sonogram-mapcode)
-    vluchtroepen = [
-        {"id": "977383", "sonogram": "HMZOOEGHGE"},
-        {"id": "977384", "sonogram": "FWZLYDQXJO"},
-        {"id": "977385", "sonogram": "LBJKXCGYMQ"},
-        {"id": "977386", "sonogram": "ATJKXLXUXI"},
-        {"id": "977387", "sonogram": "KOJWGVUIRS"},
-        {"id": "977388", "sonogram": "FDFVXLNTTP"},
-    ]
+    iframe_html = """
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+        <iframe src='https://xeno-canto.org/984486/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
+        <iframe src='https://xeno-canto.org/977384/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
+        <iframe src='https://xeno-canto.org/977383/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
+        <iframe src='https://xeno-canto.org/958045/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
+        <iframe src='https://xeno-canto.org/942687/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
+        <iframe src='https://xeno-canto.org/941962/embed' scrolling='no' frameborder='0' width='340' height='220'></iframe>
+    </div>
+    """
 
-    for i, fragment in enumerate(vluchtroepen, 1):
-        st.subheader(f"Fragment {i}")
-        sono_url = f"https://xeno-canto.org/sounds/uploaded/{fragment['sonogram']}/sonogram.gif"
-        audio_url = f"https://xeno-canto.org/{fragment['id']}/download"
-        #st.image(sono_url, caption="Sonogram", use_column_width=False)
-        st.audio(audio_url)
+    components.html(iframe_html, height=1400)
 
 
 with tabs[5]:
