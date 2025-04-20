@@ -604,32 +604,41 @@ with tabs[4]:
     lat = st.session_state.lat
     lon = st.session_state.lon
 
-    # Lijst van gewenste geslachten
-    genera = ["Turdus", "Anthus", "Motacilla", "Parus", "Emberiza"]
-    genus_nl = {
-        "Turdus": "Lijsters en aanverwanten",
-        "Anthus": "Piepers",
-        "Motacilla": "Kwikstaarten",
-        "Parus": "Mezen",
-        "Emberiza": "Gorzen"
-    }
+# Dummy lijst van soorten
+vogels = {
+    "Lijsters": "Turdus",
+    "Piepers": "Anthus",
+    "Kwikstaarten": "Motacilla",
+    "Mezen": "Parus",
+    "Gorzen": "Emberiza"
+}
 
-    # Selecteer een geslacht
-    selected_genus = st.selectbox("Selecteer een vogelgeslacht:", genera, format_func=lambda x: genus_nl.get(x, x))
+geslacht = st.selectbox("Kies een geslacht", list(vogels.keys()))
+if geslacht:
+    genus = vogels[geslacht]
+    lat = st.session_state.get("lat", 50.9)
+    lon = st.session_state.get("lon", 4.4)
 
-    # Haal opnames op voor het geselecteerde geslacht
-    recordings = get_recordings(selected_genus, lat, lon)
+    query = f"https://xeno-canto.org/api/2/recordings?query=gen:{genus}+cnt:belgium"
 
-    for rec in recordings:
-        st.markdown(f"""
-        **{rec.get('en', 'Onbekende soort')}**  
-        📍 {rec.get('loc', 'Onbekende locatie')} ({rec.get('cnt', '')})  
-        🎧  
-        <audio controls style="width: 100%;">
-            <source src="https:{rec.get('file')}" type="audio/mpeg">
-            Jouw browser ondersteunt het audio-element niet.
-        </audio>
-        """, unsafe_allow_html=True)    
+    resp = requests.get(query)
+    if resp.status_code == 200:
+        data = resp.json()
+        for rec in data["recordings"][:6]:
+            audio_url = "https:" + rec["file"]
+            soort = rec.get("en", "Onbekende soort")
+            locatie = rec.get("loc", "Onbekende locatie")
+            st.markdown(f"""
+            **🎧 {soort}**  
+            📍 {locatie}  
+            <audio controls style="width: 100%;">
+              <source src="{audio_url}" type="audio/mpeg">
+              Jouw browser ondersteunt het audio-element niet.
+            </audio>
+            """, unsafe_allow_html=True)
+    else:
+        st.error("Kon geen opnames ophalen van xeno-canto.")
+
 with tabs[5]:
     st.header("Handleiding")
     # Eenvoudige handleiding
