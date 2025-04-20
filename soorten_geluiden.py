@@ -55,5 +55,5 @@ iframe_data = {
         "https://xeno-canto.org/759346/embed",
         "https://xeno-canto.org/757598/embed"
     ]
-    # Voeg hier zelf nieuwe soorten toe 
+    # Voeg hier zelf nieuwe soorten toe
 }
