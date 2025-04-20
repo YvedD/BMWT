@@ -592,43 +592,7 @@ with tabs[3]:
 with tabs[4]:
     st.header("Geluidreferenties")
     # Eenvoudige Flight Call Database
-    # Streamlit-applicatie
-    st.title("🎶 Vogelgeluiden per Geslacht")
-
-    # Controleer of lat en lon in session_state zijn opgeslagen
-    if "lat" not in st.session_state or "lon" not in st.session_state:
-        st.error("Latitude en Longitude zijn niet ingesteld. Stel eerst een locatie in.")
-        st.stop()
-
-    # Haal lat en lon op uit session_state
-    lat = st.session_state.lat
-    lon = st.session_state.lon
-
-# Voorbeeld geslacht
-genus = "Turdus"  # Vervang dit door de gewenste geslachtsnaam
-
-# API-query voor flight calls van hoge kwaliteit
-query = f"https://xeno-canto.org/api/2/recordings?query=gen:{genus}+type:'flight call'+q:A"
-response = requests.get(query)
-data = response.json()
-recordings = data.get("recordings", [])
-
-# Weergave van opnames
-for rec in recordings[:6]:  # Toon maximaal 6 opnames
-    audio_url = rec.get("file", "")
-    if audio_url.startswith("//"):
-        audio_url = "https:" + audio_url
-
-    st.markdown(f"""
-    <div style="display: flex; align-items: center;">
-        <audio controls style="height: 30px;">
-            <source src="{audio_url}" type="audio/mpeg">
-            Jouw browser ondersteunt het audio-element niet.
-        </audio>
-        <span style="margin-left: 10px;">{rec.get('id', '')}</span>
-    </div>
-    """, unsafe_allow_html=True)
-    
+<iframe src='https://xeno-canto.org/977383/embed?simple=1' scrolling='no' frameborder='0' width='340' height='115'></iframe>    
 with tabs[5]:
     st.header("Handleiding")
     # Eenvoudige handleiding
