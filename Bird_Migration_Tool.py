@@ -590,53 +590,85 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
-    # Embed HTML met de audio spelers
+    st.header("🎧 Roodkeelpieper – Flight calls met sonogram")
+
     html_code = """
-    <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Vogelgeluiden</title>
+        <style>
+            body { font-family: Arial; }
+            .sound-block {
+                margin-bottom: 30px;
+            }
+            img {
+                max-width: 100%;
+                border: 1px solid #ccc;
+                margin-bottom: 5px;
+            }
+            audio {
+                width: 100%;
+            }
+        </style>
     </head>
     <body>
-        <h2>Geluiden van dezelfde vogelsoort</h2>
-    
-        <audio controls>
-            <source src="https://xeno-canto.org/977383/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
+        <div class="sound-block">
+            <p><strong>Fragment 1</strong></p>
+            <img src="https://xeno-canto.org/sounds/uploaded/HMZOOEGHGE/sonogram.gif" alt="Sonogram">
+            <audio controls>
+                <source src="https://xeno-canto.org/977383/download" type="audio/mpeg">
+                Je browser ondersteunt geen audio.
+            </audio>
+        </div>
 
-        <audio controls>
-            <source src="https://xeno-canto.org/977384/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
+        <div class="sound-block">
+            <p><strong>Fragment 2</strong></p>
+            <img src="https://xeno-canto.org/sounds/uploaded/FWZLYDQXJO/sonogram.gif" alt="Sonogram">
+            <audio controls>
+                <source src="https://xeno-canto.org/977384/download" type="audio/mpeg">
+                Je browser ondersteunt geen audio.
+            </audio>
+        </div>
 
-        <audio controls>
-            <source src="https://xeno-canto.org/977385/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
+        <div class="sound-block">
+            <p><strong>Fragment 3</strong></p>
+            <img src="https://xeno-canto.org/sounds/uploaded/LBJKXCGYMQ/sonogram.gif" alt="Sonogram">
+            <audio controls>
+                <source src="https://xeno-canto.org/977385/download" type="audio/mpeg">
+                Je browser ondersteunt geen audio.
+            </audio>
+        </div>
 
-        <audio controls>
-            <source src="https://xeno-canto.org/977386/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
+        <div class="sound-block">
+            <p><strong>Fragment 4</strong></p>
+            <img src="https://xeno-canto.org/sounds/uploaded/ATJKXLXUXI/sonogram.gif" alt="Sonogram">
+            <audio controls>
+                <source src="https://xeno-canto.org/977386/download" type="audio/mpeg">
+                Je browser ondersteunt geen audio.
+            </audio>
+        </div>
 
-        <audio controls>
-            <source src="https://xeno-canto.org/977387/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
+        <div class="sound-block">
+            <p><strong>Fragment 5</strong></p>
+            <img src="https://xeno-canto.org/sounds/uploaded/KOJWGVUIRS/sonogram.gif" alt="Sonogram">
+            <audio controls>
+                <source src="https://xeno-canto.org/977387/download" type="audio/mpeg">
+                Je browser ondersteunt geen audio.
+            </audio>
+        </div>
 
-        <audio controls>
-            <source src="https://xeno-canto.org/977388/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
+        <div class="sound-block">
+            <p><strong>Fragment 6</strong></p>
+            <img src="https://xeno-canto.org/sounds/uploaded/FDFVXLNTTP/sonogram.gif" alt="Sonogram">
+            <audio controls>
+                <source src="https://xeno-canto.org/977388/download" type="audio/mpeg">
+                Je browser ondersteunt geen audio.
+            </audio>
+        </div>
     </body>
     </html>
     """
 
-    # Embed het HTML in een iframe in Streamlit
-    st.components.v1.html(html_code, height=500)
+    st.components.v1.html(html_code, height=1100, scrolling=True)
 
 
 with tabs[5]:
