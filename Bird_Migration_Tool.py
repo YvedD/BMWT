@@ -590,12 +590,25 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
-    st.header("Geluidreferenties")
-# Embed iframe in tabblad 1
-    st.components.v1.html("""
-    <iframe src='https://xeno-canto.org/977383/embed?simple=1' scrolling='no' frameborder='0' width='340' height='115'></iframe>
-    """, height=120)
+    # Dropdownlijst voor het kiezen van het iframe
+    iframe_choice = st.selectbox(
+        "Kies een iframe om te tonen:",
+        ["Roodkeelpieper", "Xeno-Canto 2"]  # Voeg hier de titels van je iframes toe
+    )
 
+    # Afhankelijk van de keuze, toon het juiste iframe
+    if iframe_choice == "Xeno-Canto 1":
+        st.components.v1.html("""
+        <iframe src='https://xeno-canto.org/977383/embed?simple=1' scrolling='no' frameborder='0' width='340' height='115'></iframe>
+        """, height=120)
+        st.components.v1.html("""
+        <iframe src='https://xeno-canto.org/977384/embed?simple=1' scrolling='no' frameborder='0' width='340' height='115'></iframe>
+        """, height=120)
+
+    elif iframe_choice == "Xeno-Canto 2":
+        st.components.v1.html("""
+        <iframe src='https://xeno-canto.org/977384/embed?simple=1' scrolling='no' frameborder='0' width='340' height='115'></iframe>
+        """, height=120)
 with tabs[5]:
     st.header("Handleiding")
     # Eenvoudige handleiding
