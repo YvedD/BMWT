@@ -601,7 +601,7 @@ with tabs[4]:
 
     # HTML bouwen voor de gekozen soort
     iframes = iframe_data[geselecteerde_soort]
-    iframe_html = "<div style='display: flex; flex-direction: column; gap: 20px;'>"
+    iframe_html = "<div style='display: flex; flex-direction: row; gap: 20px;'>"
 
     for url in iframes:
         iframe_html += f"<iframe src='{url}' scrolling='no' frameborder='0' width='400' height='220'></iframe>"
