@@ -594,12 +594,12 @@ with tabs[3]:
 
 
 with tabs[4]:
-    st.header("🎧 Vluchtroepen – Selecteer een soort")
+    st.text("🎧 Vluchtroepen – Selecteer een soort")
 
     # Dropdown met soorten uit de config
     geselecteerde_soort = st.selectbox("Kies een soort:", list(iframe_data.keys()))
 
-    st.subheader(f"{geselecteerde_soort} – 6 vluchtroepfragmenten")
+    st.text(f"{geselecteerde_soort} – 6 vluchtroepfragmenten")
 
     # HTML bouwen voor de gekozen soort
     iframes = iframe_data[geselecteerde_soort]
