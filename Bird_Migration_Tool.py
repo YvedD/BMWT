@@ -604,41 +604,31 @@ with tabs[4]:
     lat = st.session_state.lat
     lon = st.session_state.lon
 
-# Dummy lijst van soorten
-vogels = {
-    "Lijsters": "Turdus",
-    "Piepers": "Anthus",
-    "Kwikstaarten": "Motacilla",
-    "Mezen": "Parus",
-    "Gorzen": "Emberiza"
-}
+# Voorbeeld geslacht
+genus = "Turdus"  # Vervang dit door de gewenste geslachtsnaam
 
-geslacht = st.selectbox("Kies een geslacht", list(vogels.keys()))
-if geslacht:
-    genus = vogels[geslacht]
-    lat = st.session_state.get("lat", 50.9)
-    lon = st.session_state.get("lon", 4.4)
+# API-query voor flight calls van hoge kwaliteit
+query = f"https://xeno-canto.org/api/2/recordings?query=gen:{genus}+type:'flight call'+q:A"
+response = requests.get(query)
+data = response.json()
+recordings = data.get("recordings", [])
 
-    query = f"https://xeno-canto.org/api/2/recordings?query=gen:{genus}+cnt:belgium"
+# Weergave van opnames
+for rec in recordings[:6]:  # Toon maximaal 6 opnames
+    audio_url = rec.get("file", "")
+    if audio_url.startswith("//"):
+        audio_url = "https:" + audio_url
 
-    resp = requests.get(query)
-    if resp.status_code == 200:
-        data = resp.json()
-        for rec in data["recordings"][:6]:
-            audio_url = "https:" + rec["file"]
-            soort = rec.get("en", "Onbekende soort")
-            locatie = rec.get("loc", "Onbekende locatie")
-            st.markdown(f"""
-            **🎧 {soort}**  
-            📍 {locatie}  
-            <audio controls style="width: 100%;">
-              <source src="{audio_url}" type="audio/mpeg">
-              Jouw browser ondersteunt het audio-element niet.
-            </audio>
-            """, unsafe_allow_html=True)
-    else:
-        st.error("Kon geen opnames ophalen van xeno-canto.")
-
+    st.markdown(f"""
+    <div style="display: flex; align-items: center;">
+        <audio controls style="height: 30px;">
+            <source src="{audio_url}" type="audio/mpeg">
+            Jouw browser ondersteunt het audio-element niet.
+        </audio>
+        <span style="margin-left: 10px;">{rec.get('id', '')}</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
 with tabs[5]:
     st.header("Handleiding")
     # Eenvoudige handleiding
