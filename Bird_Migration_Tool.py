@@ -590,54 +590,54 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
-# Embed HTML met de audio spelers
-    html_code = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Vogelgeluiden</title>
-    </head>
-    <body>
-        <h2>Geluiden van dezelfde vogelsoort</h2>
-    
-        <audio controls>
-            <source src="https://xeno-canto.org/977383/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
+    st.title("🔊 Flight calls van vogelsoorten")
 
-        <audio controls>
-            <source src="https://xeno-canto.org/977384/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
+    # Soortenlijst (manueel uitbreidbaar)
+    species_list = [
+        "Turdus merula",      # Merel
+        "Fringilla coelebs",  # Vink
+        "Erithacus rubecula", # Roodborst
+        "Anthus pratensis",   # Graspieper
+        "Regulus regulus",    # Goudhaan
+        "Sturnus vulgaris",   # Spreeuw
+    ]
 
-        <audio controls>
-            <source src="https://xeno-canto.org/977385/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
+    selected_species = st.selectbox("Kies een vogelsoort:", species_list)
 
-        <audio controls>
-            <source src="https://xeno-canto.org/977386/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
+    # Ophalen van flight call-geluiden via Xeno-Canto API
+    def get_flight_call_urls(species):
+        query = f"{species} flight call"
+        url = f"https://xeno-canto.org/api/2/recordings?query={query}"
+        response = requests.get(url)
+        if response.status_code != 200:
+            return []
 
-        <audio controls>
-            <source src="https://xeno-canto.org/977387/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
+        data = response.json()
+        recordings = data.get("recordings", [])[:6]
+        return [f"https:{rec['file']}" for rec in recordings]
 
-        <audio controls>
-            <source src="https://xeno-canto.org/977388/download" type="audio/mpeg">
-            Je browser ondersteunt geen audio.
-        </audio><br>
-    </body>
-    </html>
-    """
+    # HTML genereren met <audio> spelers
+    def generate_audio_html(audio_urls):
+        if not audio_urls:
+            return "<p>Geen flight calls gevonden.</p>"
 
-    # Embed het HTML in een iframe in Streamlit
-    st.components.v1.html(html_code, height=500)
+        html = "<h3>Flight calls van de geselecteerde soort:</h3>"
+        for i, url in enumerate(audio_urls, 1):
+            html += f"""
+            <p><strong>Fragment {i}</strong></p>
+            <audio controls style="width: 100%;">
+                <source src="{url}" type="audio/mpeg">
+                Je browser ondersteunt geen audio.
+            </audio><br>
+            """
+        return html
 
+    # Ophalen en tonen
+    urls = get_flight_call_urls(selected_species)
+    html_code = generate_audio_html(urls)
+
+    # Injecteer HTML met meerdere audioknoppen
+    st.components.v1.html(html_code, height=600, scrolling=True)
 
 
 
