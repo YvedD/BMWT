@@ -590,33 +590,56 @@ with tabs[3]:
         unsafe_allow_html=True
     )
 with tabs[4]:
-    # Dropdownlijst voor het kiezen van het geluid
-    iframe_choice = st.selectbox(
-        "Kies een geluid van de vogel:",
-        [
-            "Geluid 1", 
-            "Geluid 2", 
-            "Geluid 3", 
-            "Geluid 4", 
-            "Geluid 5", 
-            "Geluid 6"
-        ]
-    )
+# Embed HTML met de audio spelers
+    html_code = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Vogelgeluiden</title>
+    </head>
+    <body>
+        <h2>Geluiden van dezelfde vogelsoort</h2>
+    
+        <audio controls>
+            <source src="https://xeno-canto.org/977383/download" type="audio/mpeg">
+            Je browser ondersteunt geen audio.
+        </audio><br>
 
-    # Links naar de verschillende geluiden van dezelfde vogel
-    sounds = {
-        "Geluid 1": "https://xeno-canto.org/977383/embed?simple=1",
-        "Geluid 2": "https://xeno-canto.org/977384/embed?simple=1",
-        "Geluid 3": "https://xeno-canto.org/977385/embed?simple=1",
-        "Geluid 4": "https://xeno-canto.org/977386/embed?simple=1",
-        "Geluid 5": "https://xeno-canto.org/977387/embed?simple=1",
-        "Geluid 6": "https://xeno-canto.org/977388/embed?simple=1"
-    }
+        <audio controls>
+            <source src="https://xeno-canto.org/977384/download" type="audio/mpeg">
+            Je browser ondersteunt geen audio.
+        </audio><br>
 
-    # Toon het iframe op basis van de keuze van de gebruiker
-    st.components.v1.html(f"""
-    <iframe src='{sounds[iframe_choice]}' scrolling='no' frameborder='0' width='340' height='115'></iframe>
-    """, height=120)
+        <audio controls>
+            <source src="https://xeno-canto.org/977385/download" type="audio/mpeg">
+            Je browser ondersteunt geen audio.
+        </audio><br>
+
+        <audio controls>
+            <source src="https://xeno-canto.org/977386/download" type="audio/mpeg">
+            Je browser ondersteunt geen audio.
+        </audio><br>
+
+        <audio controls>
+            <source src="https://xeno-canto.org/977387/download" type="audio/mpeg">
+            Je browser ondersteunt geen audio.
+        </audio><br>
+
+        <audio controls>
+            <source src="https://xeno-canto.org/977388/download" type="audio/mpeg">
+            Je browser ondersteunt geen audio.
+        </audio><br>
+    </body>
+    </html>
+    """
+
+    # Embed het HTML in een iframe in Streamlit
+    st.components.v1.html(html_code, height=500)
+
+
+
 
 with tabs[5]:
     st.header("Handleiding")
