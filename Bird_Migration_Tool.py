@@ -66,8 +66,8 @@ eu_landen = [
 ]
 
 # Standaardwaarden voor locatie, datum en uren
-default_land = "België"
-default_locatie = "Bredene"
+default_land = "Land"
+default_locatie = "Locatie"
 default_datum = date.today()
 default_hours = (6, 19)
 default_start = (6)
