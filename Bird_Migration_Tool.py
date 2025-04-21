@@ -318,8 +318,8 @@ with tabs[0]: #dit is het meest linkse tabblad
         weather_df["time"] = weather_df["time"].str.split("T").str[1]
 
         # Default slider range van 08:00 tot 18:00 uur
-        default_start = 8  # 08:00 uur
-        default_end = 18   # 18:00 uur
+        default_start = 6  # 08:00 uur
+        default_end = 22   # 18:00 uur
         if "last_hours" not in st.session_state:
             st.session_state.last_hours = default_hours  # Zorg ervoor dat er altijd een standaardwaarde is
         # Verkrijg het tijdsbereik van de slider in de sidebar (default tussen 08:00 en 18:00 uur)
