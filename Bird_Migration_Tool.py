@@ -553,8 +553,8 @@ with tabs[1]:
             # Pandas Styling
             styled_group = group.drop(columns='Datum').style.apply(highlight_windrichting, axis=1)
 
-# Toon met styling
-st.dataframe(styled_group, use_container_width=True)
+            # Toon met styling
+            st.dataframe(styled_group, use_container_width=True)
 
         else:
             st.write("Selecteer ten minste één kolom om te tonen.")
