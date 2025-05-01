@@ -67,7 +67,7 @@ eu_landen = [
 
 # Standaardwaarden voor locatie, datum en uren
 default_land = "Belgie"
-default_locatie = "Bredene"
+default_locatie = ""
 default_datum = date.today()
 default_hours = (6, 19)
 default_start = (6)
@@ -462,7 +462,7 @@ with tabs[1]:
         "&daily=sunrise,sunset"
         "&timezone=auto"
         "&past_days=0"
-        "&forecast_days=7"
+        "&forecast_days=14"
     )
 
     # Haal de weerdata op
