@@ -548,11 +548,11 @@ with tabs[1]:
                 if richting == 'OZO':
                     kleur = 'background-color: lightgreen'
                 elif richting == 'ZO':
-                    kleur = 'background-color: limegreen'
+                    kleur = 'background-color: forestgreen'
                 elif richting == 'Z':
-                    kleur = 'background-color: palegreen'
+                    kleur = 'background-color: springgreen'
                 elif richting == 'ZZO':
-                    kleur = 'background-color: yellowgreen'
+                    kleur = 'background-color: lightgreen'
                 elif richting == 'O':
                     kleur = 'background-color: springgreen'
                 
