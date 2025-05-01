@@ -545,16 +545,26 @@ with tabs[1]:
                 kleur = ''
                 richting = rij.get('🧭')
                 
-                if richting == 'OZO':
-                    kleur = 'background-color: #ffde26'
-                elif richting == 'ZO':
-                    kleur = 'background-color: #ff8226'
-                elif richting == 'Z':
+                if richting == 'NNO':
+                    kleur = 'background-color: #e0ffb2'
+                elif richting == 'NO':
+                    kleur = 'background-color: #ffde7f'
+                elif richting == 'ONO':
                     kleur = 'background-color: #fff671'
-                elif richting == 'ZZO':
-                    kleur = 'background-color: #ffde26'
                 elif richting == 'O':
-                    kleur = 'background-color: #fff671'
+                    kleur = 'background-color: #ffe853'
+                elif richting == 'OZO':
+                    kleur = 'background-color: #ffcb53'
+                if richting == 'ZO':
+                    kleur = 'background-color: #ff9c2c'
+                elif richting == 'ZZO':
+                    kleur = 'background-color: #ffde7f'
+                elif richting == 'Z':
+                    kleur = 'background-color: #fff97f'
+                elif richting == 'ZZW':
+                    kleur = 'background-color: #e8ff7f'
+                elif richting == 'ZW':
+                    kleur = 'background-color: #e0ffb2'
                 
                 if kleur:
                     return [kleur] * len(rij)
