@@ -544,7 +544,18 @@ with tabs[1]:
             # Groepeer per dag en toon de tabel voor elke dag
             for day, group in ordered_df.groupby('Datum'):
                 st.write(f"### **{day}**")
-                st.dataframe(group.drop(columns='Datum'), use_container_width=True)
+                #st.dataframe(group.drop(columns='Datum'), use_container_width=True)
+                def highlight_windrichting(rij):
+                    if rij.get('🧭') in ['Z', 'ZO', 'ZZO', 'OZO', 'O']:
+                        return ['background-color: lightgreen'] * len(rij)
+                    return [''] * len(rij)
+                
+                # Pandas Styling
+                styled_group = group.drop(columns='Datum').style.apply(highlight_windrichting, axis=1)
+
+# Toon met styling
+st.dataframe(styled_group, use_container_width=True)
+
         else:
             st.write("Selecteer ten minste één kolom om te tonen.")
 
