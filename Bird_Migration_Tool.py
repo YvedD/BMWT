@@ -486,13 +486,13 @@ with tabs[1]:
     if weather_data_forecast:
         # Toon de dagelijkse voorspelling
         hourly_data = weather_data_forecast['hourly']
-
+    
         # Functie om windrichting te converteren naar een compasrichting
         def richting_to_compas(graden):
             richtingen = ['N', 'NNO', 'NO', 'ONO', 'O', 'OZO', 'ZO', 'ZZO', 'Z', 'ZZW', 'ZW', 'WZW', 'W', 'WNW', 'NW', 'NNW']
             index = int((graden % 360) / 22.5)  # Elke richting dekt 22.5 graden
             return richtingen[index]
-
+    
         # Zet de data om naar een DataFrame
         hourly_df = pd.DataFrame({
             'Time': pd.to_datetime(hourly_data['time']),
@@ -507,11 +507,11 @@ with tabs[1]:
             'Windkracht op 80m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_80m']],
             'Zichtbaarheid (km)': [f"{int(vis / 1000)} km" for vis in hourly_data['visibility']]
         })
-
+    
         # Voeg datum en uur toe
         hourly_df['Datum'] = hourly_df['Time'].dt.date
         hourly_df['Uur'] = hourly_df['Time'].dt.strftime('%H:%M')
-
+    
         # Kolomtitels aanpassen met iconen
         hourly_df = hourly_df.rename(columns={
             'Temperatuur (°C)': '🌡️ °C',
@@ -525,59 +525,41 @@ with tabs[1]:
             'Windkracht op 80m (Bf)': '💨@80m',
             'Zichtbaarheid (km)': '👁️ km'
         })
-
+    
         # Streamlit Titel
         st.title("Weergegevens per Uur")
-
+    
         # Multiselect voor kolommen
+        beschikbare_kolommen = [col for col in hourly_df.columns if col not in ['Datum', 'Uur']]
         geselecteerde_kolommen = st.multiselect(
             "Selecteer de kolommen die je wilt zien (en in welke volgorde)",
-            [col for col in hourly_df.columns if col not in ['Datum', 'Uur']],
-            default=[col for col in hourly_df.columns if col not in ['Datum', 'Uur']]
+            beschikbare_kolommen,
+            default=beschikbare_kolommen
         )
-
-        # Dataframe filtering op geselecteerde kolommen
+    
         if geselecteerde_kolommen:
             geselecteerde_kolommen = ['Uur'] + geselecteerde_kolommen
             ordered_df = hourly_df[['Datum'] + geselecteerde_kolommen].copy()
-
-            # Groepeer per dag en toon de tabel voor elke dag
-            for day, group in ordered_df.groupby('Datum'):
-                st.write(f"### **{day}**")
-                #st.dataframe(group.drop(columns='Datum'), use_container_width=True)
+    
+            # Highlight-functie
             def highlight_windrichting(rij):
                 if rij.get('🧭') in ['Z', 'ZO', 'ZZO', 'OZO', 'O']:
-                   return ['background-color: lightgreen'] * len(rij)
+                    return ['background-color: lightgreen'] * len(rij)
                 return [''] * len(rij)
-              
-            # Pandas Styling
-            styled_group = group.drop(columns='Datum').style.apply(highlight_windrichting, axis=1)
-
-            # Toon met styling
-            st.dataframe(styled_group, use_container_width=True)
-
+    
+            # Toon per dag gegroepeerd
+            for day, group in ordered_df.groupby('Datum'):
+                st.write(f"### **{day}**")
+                styled_group = group.drop(columns='Datum').style.apply(highlight_windrichting, axis=1)
+                st.dataframe(styled_group, use_container_width=True)
         else:
             st.write("Selecteer ten minste één kolom om te tonen.")
-
-        # Controleer of `ordered_df` niet leeg is
-        #if not ordered_df.empty:
-            # Zet `ordered_df` om naar Excel
-            #excel_data = to_excel(ordered_df)
-
-            # Downloadknop voor Excel bestand
-            #st.download_button(
-            #    label="Export Excel",
-            #    data=excel_data,
-            #    file_name="ordered_df.xlsx",
-            #    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            #)
-        #else:
-            #st.write("Het dataframe `ordered_df` is leeg. Voeg data toe om te downloaden.")
-
+    
     # Standaardwaarden instellen als ze niet bestaan
     if 'lat' not in st.session_state or 'lon' not in st.session_state:
-        st.session_state.lat = 52.3794  # Amsterdam als standaard locatie
+        st.session_state.lat = 52.3794  # Amsterdam
         st.session_state.lon = 4.9009
+
 with tabs[2]:
     st.header("CROW project")
     # Maak de dynamische CROW widget URL
