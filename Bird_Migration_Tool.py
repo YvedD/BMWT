@@ -462,7 +462,7 @@ with tabs[1]:
         "&daily=sunrise,sunset"
         "&timezone=auto"
         "&past_days=0"
-        "&forecast_days=14"
+        "&forecast_days=16"
     )
 
     # Haal de weerdata op
