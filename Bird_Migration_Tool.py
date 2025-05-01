@@ -541,11 +541,25 @@ with tabs[1]:
             geselecteerde_kolommen = ['Uur'] + geselecteerde_kolommen
             ordered_df = hourly_df[['Datum'] + geselecteerde_kolommen].copy()
     
-            # Highlight-functie
             def highlight_windrichting(rij):
-                if rij.get('🧭') in ['Z', 'ZO', 'ZZO', 'OZO', 'O']:
-                    return ['background-color: lightgreen'] * len(rij)
-                return [''] * len(rij)
+                kleur = ''
+                richting = rij.get('🧭')
+                
+                if richting == 'OZO':
+                    kleur = 'background-color: lightgreen'
+                elif richting == 'ZO':
+                    kleur = 'background-color: limegreen'
+                elif richting == 'Z':
+                    kleur = 'background-color: palegreen'
+                elif richting == 'ZZO':
+                    kleur = 'background-color: yellowgreen'
+                elif richting == 'O':
+                    kleur = 'background-color: springgreen'
+                
+                if kleur:
+                    return [kleur] * len(rij)
+                else:
+                    return [''] * len(rij)
     
             # Toon per dag gegroepeerd
             for day, group in ordered_df.groupby('Datum'):
