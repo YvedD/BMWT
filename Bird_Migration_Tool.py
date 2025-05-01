@@ -544,7 +544,7 @@ with tabs[1]:
             # Highlight-functie
             def highlight_windrichting(rij):
                 if rij.get('🧭') in ['Z', 'ZO', 'ZZO', 'OZO', 'O']:
-                    return ['background-color: lightgreen'] * len(rij)
+                    return ['background-color: limegreen'] * len(rij)
                 return [''] * len(rij)
     
             # Toon per dag gegroepeerd
