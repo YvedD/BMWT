@@ -546,15 +546,15 @@ with tabs[1]:
                 richting = rij.get('🧭')
                 
                 if richting == 'OZO':
-                    kleur = 'background-color: lightgreen'
+                    kleur = 'background-color: ddfec8'
                 elif richting == 'ZO':
-                    kleur = 'background-color: forestgreen'
+                    kleur = 'background-color: ff8226'
                 elif richting == 'Z':
-                    kleur = 'background-color: springgreen'
+                    kleur = 'background-color: ffde26'
                 elif richting == 'ZZO':
-                    kleur = 'background-color: lightgreen'
+                    kleur = 'background-color: ddfec8'
                 elif richting == 'O':
-                    kleur = 'background-color: springgreen'
+                    kleur = 'background-color: ffde26'
                 
                 if kleur:
                     return [kleur] * len(rij)
