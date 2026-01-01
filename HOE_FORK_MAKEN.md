@@ -119,6 +119,41 @@ git remote -v
 # origin  https://github.com/YvedD/BirdNET-Pi-MigCount.git (push)
 ```
 
+#### Je RPi 4B forceren om te synchroniseren met je eigen GitHub fork
+
+Als je wilt dat je lokale Raspberry Pi 4B **exact hetzelfde** is als jouw GitHub fork (YvedD/BirdNET-Pi-MigCount), gebruik dan deze commando's:
+
+**⚠️ WAARSCHUWING:** Dit verwijdert ALLE lokale wijzigingen op je RPi en vervangt deze met wat er op GitHub staat!
+
+```bash
+# Stap 1: Ga naar je repository directory op de RPi
+cd ~/BirdNET-Pi-MigCount  # Pas aan naar waar je repository staat
+
+# Stap 2: Controleer dat origin naar je eigen fork wijst
+git remote -v
+# Moet tonen: origin  https://github.com/YvedD/BirdNET-Pi-MigCount.git
+
+# Als origin niet correct is ingesteld, stel deze in:
+git remote set-url origin https://github.com/YvedD/BirdNET-Pi-MigCount.git
+
+# Stap 3: Haal de laatste versie op van je GitHub fork
+git fetch origin
+
+# Stap 4: Gooi alle lokale wijzigingen weg en forceer sync met GitHub
+git reset --hard origin/main
+
+# Stap 5: Zorg dat je werkdirectory schoon is
+git clean -fd
+
+# Klaar! Je RPi is nu volledig in sync met je GitHub fork
+```
+
+**Verificatie:** Controleer of alles gesynchroniseerd is:
+```bash
+# Dit commando moet tonen: "Your branch is up to date with 'origin/main'"
+git status
+```
+
 #### Hard Reset: Je lokale repository synchroniseren
 
 Als je je lokale repository volledig wilt synchroniseren met de Nachtzuster fork (bijvoorbeeld om een schone start te maken):
