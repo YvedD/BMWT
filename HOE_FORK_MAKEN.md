@@ -138,7 +138,9 @@ git fetch upstream
 # Stap 4: Hard reset naar de main branch van Nachtzuster
 git reset --hard upstream/main
 
-# Stap 5: Force push naar je eigen fork (alleen als je zeker bent!)
+# Stap 5: Force push naar je eigen fork 
+# ⚠️ LET OP: Dit overschrijft de geschiedenis in je remote fork!
+# Alleen doen als je ZEKER weet dat je alle remote wijzigingen wilt verwijderen!
 git push origin main --force
 
 # Stap 6: Verwijder de upstream remote weer om ongewenste pushes te voorkomen
