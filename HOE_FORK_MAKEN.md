@@ -91,6 +91,162 @@ Als de originele `Nachtzuster/BirdNET-Pi` repository wordt bijgewerkt, kun je de
 2. Klik op **"Sync fork"** (verschijnt als er updates zijn)
 3. Klik op **"Update branch"**
 
+### Voorkomen van ongewenste commits naar Nachtzuster repository
+
+**BELANGRIJK:** Als je je fork lokaal hebt gekloond op je computer (bijvoorbeeld op je Raspberry Pi 4B), wil je voorkomen dat je per ongeluk wijzigingen pusht naar de originele Nachtzuster repository.
+
+#### CLI Commando's voor je Raspberry Pi 4B
+
+Als je je fork al hebt gekloond op je Raspberry Pi:
+
+```bash
+# Ga naar de directory van je gekloonde repository
+cd ~/BirdNET-Pi-MigCount  # Pas dit aan naar jouw pad
+
+# Bekijk de huidige remote configuratie
+git remote -v
+
+# Verwijder de upstream remote als deze naar Nachtzuster wijst
+git remote remove upstream
+
+# Voeg je eigen fork toe als origin (als deze er nog niet is)
+git remote set-url origin https://github.com/YvedD/BirdNET-Pi-MigCount.git
+
+# Controleer of het goed is ingesteld
+git remote -v
+# Je zou moeten zien:
+# origin  https://github.com/YvedD/BirdNET-Pi-MigCount.git (fetch)
+# origin  https://github.com/YvedD/BirdNET-Pi-MigCount.git (push)
+```
+
+#### Hard Reset: Je lokale repository synchroniseren
+
+Als je je lokale repository volledig wilt synchroniseren met de Nachtzuster fork (bijvoorbeeld om een schone start te maken):
+
+**⚠️ WAARSCHUWING:** Een hard reset verwijdert ALLE lokale wijzigingen die je hebt gemaakt. Zorg dat je belangrijke wijzigingen eerst hebt opgeslagen!
+
+```bash
+# Stap 1: Ga naar je repository directory
+cd ~/BirdNET-Pi-MigCount
+
+# Stap 2: Voeg Nachtzuster toe als upstream remote (als deze er nog niet is)
+git remote add upstream https://github.com/Nachtzuster/BirdNET-Pi.git
+
+# Stap 3: Haal de laatste wijzigingen op van Nachtzuster
+git fetch upstream
+
+# Stap 4: Hard reset naar de main branch van Nachtzuster
+git reset --hard upstream/main
+
+# Stap 5: Force push naar je eigen fork (alleen als je zeker bent!)
+git push origin main --force
+
+# Stap 6: Verwijder de upstream remote weer om ongewenste pushes te voorkomen
+git remote remove upstream
+```
+
+#### Alternatief: Soft sync (behoudt lokale wijzigingen)
+
+Als je je lokale wijzigingen wilt behouden maar toch synchroniseren:
+
+```bash
+# Voeg Nachtzuster toe als upstream
+git remote add upstream https://github.com/Nachtzuster/BirdNET-Pi.git
+
+# Haal wijzigingen op
+git fetch upstream
+
+# Merge de wijzigingen (dit behoudt je lokale changes)
+git merge upstream/main
+
+# Push naar je eigen fork
+git push origin main
+
+# Verwijder upstream weer
+git remote remove upstream
+```
+
+### Het newinstaller.sh script aanpassen
+
+Als je wilt dat gebruikers van jouw fork updates ontvangen vanuit **jouw repository** in plaats van de Nachtzuster repository, moet je het `newinstaller.sh` script aanpassen.
+
+#### Stap-voor-stap aanpassing:
+
+1. **Ga naar je fork op GitHub**: https://github.com/YvedD/BirdNET-Pi-MigCount
+
+2. **Navigeer naar het script**:
+   - Klik op de `main` branch
+   - Navigeer naar het bestand: `/scripts/newinstaller.sh` (of waar het script zich bevindt)
+
+3. **Bewerk het bestand**:
+   - Klik op het potlood-icoon (✏️) rechtsboven
+
+4. **Zoek en vervang repository URL's**:
+   
+   Zoek naar regels die verwijzen naar:
+   ```bash
+   https://github.com/Nachtzuster/BirdNET-Pi
+   ```
+   
+   Vervang deze door:
+   ```bash
+   https://github.com/YvedD/BirdNET-Pi-MigCount
+   ```
+
+5. **Specifieke aanpassingen te zoeken**:
+   
+   Let op deze patronen in het script:
+   ```bash
+   # Voorbeeld van wat je mogelijk tegenkomt:
+   REPO_URL="https://github.com/Nachtzuster/BirdNET-Pi"
+   git clone https://github.com/Nachtzuster/BirdNET-Pi.git
+   ```
+   
+   Wijzig deze naar:
+   ```bash
+   REPO_URL="https://github.com/YvedD/BirdNET-Pi-MigCount"
+   git clone https://github.com/YvedD/BirdNET-Pi-MigCount.git
+   ```
+
+6. **Commit de wijzigingen**:
+   - Scroll naar beneden
+   - Voeg een commit message toe: "Update installer to use YvedD fork"
+   - Klik op **"Commit changes"**
+
+#### Via de Command Line (op je Raspberry Pi):
+
+Als je het script lokaal wilt aanpassen:
+
+```bash
+# Navigeer naar je repository
+cd ~/BirdNET-Pi-MigCount
+
+# Open het bestand met nano of vim
+nano scripts/newinstaller.sh
+
+# Vervang alle instanties van Nachtzuster door jouw repository
+# Gebruik Ctrl+W om te zoeken in nano
+# Zoek: Nachtzuster/BirdNET-Pi
+# Vervang door: YvedD/BirdNET-Pi-MigCount
+
+# Sla op en sluit (Ctrl+X, Y, Enter in nano)
+
+# Commit de wijziging
+git add scripts/newinstaller.sh
+git commit -m "Update installer to use YvedD/BirdNET-Pi-MigCount fork"
+
+# Push naar je fork
+git push origin main
+```
+
+#### Andere bestanden die mogelijk aangepast moeten worden:
+
+Controleer ook deze bestanden op verwijzingen naar de Nachtzuster repository:
+- `README.md`
+- `update.sh` (als die bestaat)
+- Andere installatie of update scripts
+- Configuratiebestanden
+
 ### Wijzigingen terug sturen naar het origineel
 
 Als je verbeteringen hebt gemaakt die je wilt delen met de originele repository:
