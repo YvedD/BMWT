@@ -90,6 +90,11 @@ SUPPLY_CORRIDOR_LON_MIN = -2.0  # Western edge of migration route
 SUPPLY_CORRIDOR_LON_MAX = 10.0  # Eastern edge of migration route
 SUPPLY_LAG_FRANCE       = 1     # 1-day lag: French → Belgian passage
 SUPPLY_LAG_SPAIN        = 2     # 2-day lag: Spanish → Belgian passage
+SUPPLY_FRANCE_WEIGHT    = 0.60  # France corridor weight (more immediate influence)
+SUPPLY_SPAIN_WEIGHT     = 0.40  # Spain corridor weight
+SUPPLY_FACTOR_FLOOR     = 0.30  # Minimum supply factor (some birds always pass)
+SUPPLY_FACTOR_RANGE     = 0.70  # Working range of supply factor (1 − floor)
+DEFAULT_CORRIDOR_SCORE  = 0.50  # Fallback when corridor is empty
 
 _TF = TimezoneFinder()
 
@@ -411,8 +416,8 @@ def apply_supply_chain_correction(results: list[dict]) -> list[dict]:
             if SUPPLY_SPAIN_LAT_MIN <= r["latitude"] <= SUPPLY_SPAIN_LAT_MAX
             and SUPPLY_CORRIDOR_LON_MIN <= r["longitude"] <= SUPPLY_CORRIDOR_LON_MAX
         ]
-        france_avg.append(sum(fr) / len(fr) if fr else 0.5)
-        spain_avg.append(sum(sp) / len(sp) if sp else 0.5)
+        france_avg.append(sum(fr) / len(fr) if fr else DEFAULT_CORRIDOR_SCORE)
+        spain_avg.append(sum(sp) / len(sp) if sp else DEFAULT_CORRIDOR_SCORE)
 
     for r in results:
         lat = r["latitude"]
@@ -424,7 +429,11 @@ def apply_supply_chain_correction(results: list[dict]) -> list[dict]:
             sp_day        = max(0, day_idx - SUPPLY_LAG_SPAIN)
             fr_supply     = france_avg[fr_day]
             sp_supply     = spain_avg[sp_day]
-            supply_factor = round(0.30 + 0.70 * (0.60 * fr_supply + 0.40 * sp_supply), 3)
+            supply_factor = round(
+                SUPPLY_FACTOR_FLOOR + SUPPLY_FACTOR_RANGE
+                * (SUPPLY_FRANCE_WEIGHT * fr_supply + SUPPLY_SPAIN_WEIGHT * sp_supply),
+                3,
+            )
             raw_score     = day_data["score"]
             adj_score     = round(min(1.0, max(0.0, raw_score * supply_factor)), 3)
             day_data["score"]            = adj_score

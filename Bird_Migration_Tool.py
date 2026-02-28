@@ -266,6 +266,15 @@ SUPPLY_CORRIDOR_LON_MIN = -2.0  # Westgrens migratieroute
 SUPPLY_CORRIDOR_LON_MAX = 10.0  # Oostgrens migratieroute
 SUPPLY_LAG_FRANCE       = 1     # 1 dag eerder: vogels in Fr. → volgende dag in BE
 SUPPLY_LAG_SPAIN        = 2     # 2 dagen eerder: vogels in Sp. → 2 dagen later in BE
+SUPPLY_FRANCE_WEIGHT    = 0.60  # Gewicht van de Franse aanvoer (directere impact)
+SUPPLY_SPAIN_WEIGHT     = 0.40  # Gewicht van de Spaanse aanvoer
+SUPPLY_FACTOR_FLOOR     = 0.30  # Minimum aanvoerfactor (altijd minimaal 30 % door)
+SUPPLY_FACTOR_RANGE     = 0.70  # Werkbereik van de aanvoerfactor (1 − floor)
+STANDAARD_CORRIDOR_SCORE = 0.50 # Terugvalwaarde als corridor leeg is
+
+# Rasterresolutie voor hoge resolutie (~50×50 km)
+MIGRATIE_LAT_STEP_HOGE_RES = 0.5   # ≈ 55 km per breedtegraad
+MIGRATIE_LON_STEP_HOGE_RES = 0.65  # ≈ 50 km op breedtegraad 45°N
 
 # Tijdzones die worden uitgesloten van het raster (eilanden / niet-migratiegebied)
 _UITGESLOTEN_TIJDZONES = frozenset({
@@ -747,8 +756,8 @@ def _pas_aanvoer_toe(days_data: list[list[dict]]) -> list[list[dict]]:
             if SUPPLY_SPAIN_LAT_MIN <= p["latitude"] <= SUPPLY_SPAIN_LAT_MAX
             and SUPPLY_CORRIDOR_LON_MIN <= p["longitude"] <= SUPPLY_CORRIDOR_LON_MAX
         ]
-        france_gem.append(sum(fr_scores) / len(fr_scores) if fr_scores else 0.5)
-        spanje_gem.append(sum(sp_scores) / len(sp_scores) if sp_scores else 0.5)
+        france_gem.append(sum(fr_scores) / len(fr_scores) if fr_scores else STANDAARD_CORRIDOR_SCORE)
+        spanje_gem.append(sum(sp_scores) / len(sp_scores) if sp_scores else STANDAARD_CORRIDOR_SCORE)
 
     for dag_idx in range(n_days):
         fr_dag     = max(0, dag_idx - SUPPLY_LAG_FRANCE)
@@ -756,8 +765,8 @@ def _pas_aanvoer_toe(days_data: list[list[dict]]) -> list[list[dict]]:
         fr_supply  = france_gem[fr_dag]
         sp_supply  = spanje_gem[sp_dag]
         # Gecombineerde aanvoerfactor (Frankrijk: meer directe impact)
-        supply_raw    = 0.60 * fr_supply + 0.40 * sp_supply
-        supply_factor = round(0.30 + 0.70 * supply_raw, 3)  # floor op 0.30
+        supply_raw    = SUPPLY_FRANCE_WEIGHT * fr_supply + SUPPLY_SPAIN_WEIGHT * sp_supply
+        supply_factor = round(SUPPLY_FACTOR_FLOOR + SUPPLY_FACTOR_RANGE * supply_raw, 3)  # floor op 30 %
 
         for punt in days_data[dag_idx]:
             lat = punt["latitude"]
@@ -1330,8 +1339,8 @@ with tabs[2]:
             laad_migratie_rasterdata_6daags.clear()
             st.rerun()
 
-    _lat_step = 0.5 if "50" in resolutie_keuze else MIGRATIE_LAT_STEP
-    _lon_step = 0.65 if "50" in resolutie_keuze else MIGRATIE_LON_STEP
+    _lat_step = MIGRATIE_LAT_STEP_HOGE_RES if "50" in resolutie_keuze else MIGRATIE_LAT_STEP
+    _lon_step = MIGRATIE_LON_STEP_HOGE_RES if "50" in resolutie_keuze else MIGRATIE_LON_STEP
     _res_label = "~50 × 50 km" if "50" in resolutie_keuze else "~100 × 100 km"
 
     with st.spinner("Weervoorspelling ophalen voor 6-daags migratieraster — even geduld..."):
