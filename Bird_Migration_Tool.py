@@ -12,6 +12,7 @@ import time
 import math
 import colorsys
 import concurrent.futures
+import threading
 from geopy.exc import GeocoderUnavailable
 import streamlit.components.v1 as components
 from timezonefinder import TimezoneFinder
@@ -19,6 +20,11 @@ from soorten_geluiden import iframe_data
 import altair as alt
 
 _TF = TimezoneFinder()
+
+# --- Thread-veilige cache voor dichtsbijzijnde bewoonde kern (Nominatim fallback) ---
+_kern_cache: dict = {}
+_kern_lock = threading.Lock()
+_nominatim_semaphore = threading.Semaphore(1)  # Max 1 gelijktijdige Nominatim-aanvraag (ToS)
 
 
 st.set_page_config(
@@ -530,28 +536,111 @@ def migratie_vlieghoogte(wind_speed_kmh: float) -> tuple[str, str, int]:
         return "Hoog 🔼", "Wind 0–2 Bf — vogels vliegen hoog, minder zichtbaar", 5
 
 
-def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
-    """Haal 6-daagse uurlijkse weervoorspelling op voor één rasterpunt."""
+def _dichtstbijzijnde_bewoonde_kern(lat: float, lon: float) -> tuple[float, float]:
+    """Zoek de dichtstbijzijnde bewoonde kern (stad/gemeente/dorp) via Nominatim.
+
+    Wordt gebruikt als fallback wanneer de weers-API geen data teruggeeft voor een
+    rasterpunt (bv. een bosgebied of perifeer landelijk gebied).  Het resultaat is
+    gecachet zodat dezelfde coördinaten maar één keer worden opgezocht.
+
+    Retourneert de coördinaten van de gevonden kern, of de originele coördinaten als
+    geen kern gevonden wordt.
+    """
+    key = (lat, lon)
+    with _kern_lock:
+        if key in _kern_cache:
+            return _kern_cache[key]
+
+    resultaat = (lat, lon)
+    with _nominatim_semaphore:
+        try:
+            geolocator = Nominatim(
+                user_agent="Bird Migration Weather Tool (contact: ydsdsy@gmail.com)"
+            )
+            time.sleep(1)  # Respect Nominatim rate limit (ToS: max 1 req/s)
+            loc = geolocator.reverse(
+                (lat, lon), language="nl", addressdetails=True, zoom=10, timeout=10
+            )
+            if loc:
+                addr = loc.raw.get("address", {})
+                kern = (
+                    addr.get("city") or addr.get("town") or
+                    addr.get("village") or addr.get("hamlet") or
+                    addr.get("municipality")
+                )
+                land = addr.get("country_code", "")
+                if kern and land:
+                    time.sleep(1)  # Second Nominatim request — respect rate limit
+                    kern_loc = geolocator.geocode(
+                        f"{kern}, {land.upper()}", exactly_one=True, timeout=10
+                    )
+                    if kern_loc:
+                        resultaat = (round(kern_loc.latitude, 4), round(kern_loc.longitude, 4))
+        except Exception:
+            pass
+
+    with _kern_lock:
+        _kern_cache[key] = resultaat
+    return resultaat
+
+
+def _uur_waarde(lst, idx: int, standaard: float) -> float:
+    """Haal veilig een uurwaarde op; geeft standaard terug als de waarde None of ontbreekt."""
     try:
-        resp = requests.get(
-            "https://api.open-meteo.com/v1/forecast",
-            params={
-                "latitude":  punt["latitude"],
-                "longitude": punt["longitude"],
-                "hourly": (
-                    "temperature_2m,wind_speed_10m,wind_direction_10m,"
-                    "precipitation,visibility,cloud_cover,"
-                    "pressure_msl,cape,boundary_layer_height"
-                ),
-                "timezone": "UTC",
-                "forecast_days": 6,
-            },
-            timeout=20,
-        )
-        if resp.status_code == 200:
-            return resp.json().get("hourly")
-    except Exception:
-        pass
+        v = lst[idx]
+        return standaard if v is None else float(v)
+    except (IndexError, TypeError):
+        return standaard
+
+
+def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
+    """Haal 6-daagse uurlijkse weervoorspelling op voor één rasterpunt.
+
+    Probeert tot 3 keer bij tijdelijke fouten of rate-limiting (HTTP 429).
+    """
+    params = {
+        "latitude":  punt["latitude"],
+        "longitude": punt["longitude"],
+        "hourly": (
+            "temperature_2m,wind_speed_10m,wind_direction_10m,"
+            "precipitation,visibility,cloud_cover,"
+            "pressure_msl,cape,boundary_layer_height"
+        ),
+        "timezone": "UTC",
+        "forecast_days": 6,
+    }
+    for poging in range(3):
+        try:
+            resp = requests.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params=params,
+                timeout=20,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("hourly")
+            if resp.status_code == 429:
+                time.sleep(2 ** poging)  # Exponential backoff: 1s, 2s, 4s
+                continue
+        except Exception:
+            pass
+        if poging < 2:
+            time.sleep(1)
+
+    # Fallback: zoek de dichtstbijzijnde bewoonde kern en probeer opnieuw
+    kern_lat, kern_lon = _dichtstbijzijnde_bewoonde_kern(punt["latitude"], punt["longitude"])
+    if (kern_lat, kern_lon) != (punt["latitude"], punt["longitude"]):
+        # Maak een nieuwe params-dict met de kern-coördinaten (origineel blijft ongewijzigd)
+        kern_params = {**params, "latitude": kern_lat, "longitude": kern_lon}
+        try:
+            resp = requests.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params=kern_params,
+                timeout=20,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("hourly")
+        except Exception:
+            pass
     return None
 
 
@@ -813,23 +902,20 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
             for uur in range(24):
                 uur_idx = dag_idx * 24 + uur
                 if hourly:
-                    try:
-                        uur_weer = {
-                            "temperature_2m":       hourly["temperature_2m"][uur_idx],
-                            "wind_speed_10m":        hourly["wind_speed_10m"][uur_idx],
-                            "wind_direction_10m":    hourly["wind_direction_10m"][uur_idx],
-                            "precipitation":         hourly["precipitation"][uur_idx],
-                            "visibility":            hourly["visibility"][uur_idx],
-                            "cloud_cover":           hourly["cloud_cover"][uur_idx],
-                            "pressure_msl":          hourly["pressure_msl"][uur_idx],
-                            "cape":                  cape_lijst[uur_idx],
-                            "boundary_layer_height": blh_lijst[uur_idx],
-                        }
-                        uurscores.append(migratie_bereken_score_uitgebreid(
-                            uur_weer, lat=punt["latitude"], lon=punt["longitude"]
-                        ))
-                    except (IndexError, KeyError, TypeError):
-                        uurscores.append(0.5)
+                    uur_weer = {
+                        "temperature_2m":       _uur_waarde(hourly.get("temperature_2m"),     uur_idx, 12.0),
+                        "wind_speed_10m":        _uur_waarde(hourly.get("wind_speed_10m"),     uur_idx,  0.0),
+                        "wind_direction_10m":    _uur_waarde(hourly.get("wind_direction_10m"), uur_idx, 180.0),
+                        "precipitation":         _uur_waarde(hourly.get("precipitation"),      uur_idx,  0.0),
+                        "visibility":            _uur_waarde(hourly.get("visibility"),         uur_idx, 10000.0),
+                        "cloud_cover":           _uur_waarde(hourly.get("cloud_cover"),        uur_idx,  0.0),
+                        "pressure_msl":          _uur_waarde(hourly.get("pressure_msl"),       uur_idx, 1013.0),
+                        "cape":                  _uur_waarde(cape_lijst,                       uur_idx,  0.0),
+                        "boundary_layer_height": _uur_waarde(blh_lijst,                        uur_idx, 500.0),
+                    }
+                    uurscores.append(migratie_bereken_score_uitgebreid(
+                        uur_weer, lat=punt["latitude"], lon=punt["longitude"]
+                    ))
                 else:
                     uurscores.append(0.5)
             uurscores_per_dag.append(uurscores)
@@ -840,20 +926,17 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
             # Weerdisplay op 12:00 UTC voor popup / tooltip
             middag_idx = dag_idx * 24 + 12
             if hourly:
-                try:
-                    weer = {
-                        "temperature_2m":       hourly["temperature_2m"][middag_idx],
-                        "wind_speed_10m":        hourly["wind_speed_10m"][middag_idx],
-                        "wind_direction_10m":    hourly["wind_direction_10m"][middag_idx],
-                        "precipitation":         hourly["precipitation"][middag_idx],
-                        "visibility":            hourly["visibility"][middag_idx],
-                        "cloud_cover":           hourly["cloud_cover"][middag_idx],
-                        "pressure_msl":          hourly["pressure_msl"][middag_idx],
-                        "cape":                  cape_lijst[middag_idx],
-                        "boundary_layer_height": blh_lijst[middag_idx],
-                    }
-                except (IndexError, KeyError, TypeError):
-                    weer = None
+                weer = {
+                    "temperature_2m":       _uur_waarde(hourly.get("temperature_2m"),     middag_idx, 12.0),
+                    "wind_speed_10m":        _uur_waarde(hourly.get("wind_speed_10m"),     middag_idx,  0.0),
+                    "wind_direction_10m":    _uur_waarde(hourly.get("wind_direction_10m"), middag_idx, 180.0),
+                    "precipitation":         _uur_waarde(hourly.get("precipitation"),      middag_idx,  0.0),
+                    "visibility":            _uur_waarde(hourly.get("visibility"),         middag_idx, 10000.0),
+                    "cloud_cover":           _uur_waarde(hourly.get("cloud_cover"),        middag_idx,  0.0),
+                    "pressure_msl":          _uur_waarde(hourly.get("pressure_msl"),       middag_idx, 1013.0),
+                    "cape":                  _uur_waarde(cape_lijst,                       middag_idx,  0.0),
+                    "boundary_layer_height": _uur_waarde(blh_lijst,                        middag_idx, 500.0),
+                }
             else:
                 weer = None
 
@@ -899,6 +982,7 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
                 "vlieghoogte_tip":  vlieghoogte_tip,
                 "marker_radius":    marker_radius,
                 "be_nl_zone":       in_bene,
+                "uurscores":        uurscores,
             })
         return dag_punten, uurscores_per_dag
 
@@ -1494,22 +1578,54 @@ with tabs[2]:
                 tooltip=tooltip_tekst,
             ).add_to(m_dag)
 
-        st_folium(
-            m_dag, height=500, returned_objects=[],
+        folium_result = st_folium(
+            m_dag, height=500, returned_objects=["last_object_clicked"],
             use_container_width=True, key=f"raster_dag_{dag_idx}",
         )
 
-        # Tijdlijn: uurlijkse migratiescore (00:00–23:00 UTC) voor deze dag
-        uurscores_dag = uurgemiddelden_per_dag[dag_idx]
+        # Bepaal uurscores voor de grafiek: klikpunt of gemiddelde over alle punten
+        chart_punt = None
+        clicked = (folium_result or {}).get("last_object_clicked")
+        if clicked and isinstance(clicked, dict):
+            klik_lat = clicked.get("lat")
+            klik_lng = clicked.get("lng")
+            if klik_lat is not None and klik_lng is not None:
+                chart_punt = min(
+                    raster_dag,
+                    key=lambda p: (p["latitude"] - klik_lat) ** 2 + (p["longitude"] - klik_lng) ** 2,
+                )
+
+        if chart_punt is not None:
+            uurscores_dag = chart_punt["uurscores"]
+            chart_titel = (
+                f"Uurlijkse migratiescore — {dag_label} "
+                f"📍 {chart_punt['latitude']}°N {chart_punt['longitude']}°E (UTC)"
+            )
+            st.caption(
+                f"📍 Geselecteerd punt: **{chart_punt['latitude']}°N {chart_punt['longitude']}°E** "
+                f"— score {int(chart_punt['score'] * 100)}/100 ({chart_punt['klasse']}) "
+                f"· wind {chart_punt['wind_richting']} {chart_punt['wind_kracht']} Bf "
+                f"· {chart_punt['temperatuur']} °C · {chart_punt['neerslag']} mm "
+                f"· {chart_punt['druk']} hPa · BLH {chart_punt['blh']} m"
+            )
+        else:
+            uurscores_dag = uurgemiddelden_per_dag[dag_idx]
+            chart_titel = (
+                f"Uurlijkse migratiescore — {dag_label} "
+                f"(gemiddelde {n_punten} rasterpunten, UTC) — klik op een punt voor detail"
+            )
+
         uur_df = pd.DataFrame({
             "uur":   [f"{u:02d}:00" for u in range(24)],
             "score": [round(s * 100) for s in uurscores_dag],
         })
+        regel = (
+            alt.Chart(pd.DataFrame({"y": [50]}))
+            .mark_rule(color="#888888", strokeDash=[4, 4])
+            .encode(y=alt.Y("y:Q", scale=alt.Scale(domain=[0, 100])))
+        )
         tijdlijn = (
-            alt.Chart(
-                uur_df,
-                title=f"Uurlijkse migratiescore — {dag_label} (gemiddelde {n_punten} rasterpunten, UTC)",
-            )
+            alt.Chart(uur_df, title=chart_titel)
             .mark_bar(size=16)
             .encode(
                 x=alt.X("uur:O", title="Uur (UTC)", sort=None),
@@ -1527,9 +1643,9 @@ with tabs[2]:
                     alt.Tooltip("score:Q", title="Migratiescore (0–100)"),
                 ],
             )
-            .properties(height=130)
+            .properties(height=250)
         )
-        st.altair_chart(tijdlijn, use_container_width=True)
+        st.altair_chart(tijdlijn + regel, use_container_width=True)
         st.divider()
 
     # Corridoranalyse voor BE / NL / DE
