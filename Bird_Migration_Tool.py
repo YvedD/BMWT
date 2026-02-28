@@ -554,13 +554,13 @@ with tabs[1]:
                 elif richting == 'O':
                     kleur = 'background-color: #ffe853'
                 elif richting == 'OZO':
-                    kleur = 'background-color: #ffcb53'
+                    kleur = 'background-color: #ff4d00'
                 if richting == 'ZO':
                     kleur = 'background-color: #ff4d00'
                 elif richting == 'ZZO':
-                    kleur = 'background-color: #ffde7f'
+                    kleur = 'background-color: #ff4d00'
                 elif richting == 'Z':
-                    kleur = 'background-color: #fff97f'
+                    kleur = 'background-color: #ffe853'
                 elif richting == 'ZZW':
                     kleur = 'background-color: #e8ff7f'
                 elif richting == 'ZW':
@@ -646,3 +646,4 @@ with tabs[5]:
            Uiteraard kan je in deze context ook terecht op de webpagina van Trektellen.nl, echter kan je geen gegevens wijzigen op deze site, het weergeven van trektellen.nl is hier puur informatief bedoeld.
         7. Voor meldingen, opmerkingen en vragen kan je terecht via mail : ydsdsy@gmail.com""")
         # Een mailto-link toevoegen
+
