@@ -16,6 +16,7 @@ from geopy.exc import GeocoderUnavailable
 import streamlit.components.v1 as components
 from timezonefinder import TimezoneFinder
 from soorten_geluiden import iframe_data
+import altair as alt
 
 _TF = TimezoneFinder()
 
@@ -799,15 +800,47 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
     vandaag = date.today()
     dag_datums = [_dag_label_nl(vandaag + timedelta(days=i)) for i in range(MIGRATIE_FORECAST_DAYS)]
 
-    def verwerk_punt(punt: dict) -> list[dict]:
+    def verwerk_punt(punt: dict) -> tuple[list[dict], list[list[float]]]:
         hourly = _haal_weer_forecast_rasterpunt(punt)
         dag_punten = []
+        uurscores_per_dag: list[list[float]] = []  # 24 uurlijkse scores per dag, voor tijdlijn
         for dag_idx in range(MIGRATIE_FORECAST_DAYS):
-            middag_idx = dag_idx * 24 + 12   # 12:00 UTC per dag
+            cape_lijst = (hourly.get("cape") or [0] * MIGRATIE_FORECAST_HOURS) if hourly else [0] * MIGRATIE_FORECAST_HOURS
+            blh_lijst  = (hourly.get("boundary_layer_height") or [500] * MIGRATIE_FORECAST_HOURS) if hourly else [500] * MIGRATIE_FORECAST_HOURS
+
+            # --- Uurlijkse scores (alle 24 uur) voor tijdlijnvisualisatie en daggemiddelde ---
+            uurscores: list[float] = []
+            for uur in range(24):
+                uur_idx = dag_idx * 24 + uur
+                if hourly:
+                    try:
+                        uur_weer = {
+                            "temperature_2m":       hourly["temperature_2m"][uur_idx],
+                            "wind_speed_10m":        hourly["wind_speed_10m"][uur_idx],
+                            "wind_direction_10m":    hourly["wind_direction_10m"][uur_idx],
+                            "precipitation":         hourly["precipitation"][uur_idx],
+                            "visibility":            hourly["visibility"][uur_idx],
+                            "cloud_cover":           hourly["cloud_cover"][uur_idx],
+                            "pressure_msl":          hourly["pressure_msl"][uur_idx],
+                            "cape":                  cape_lijst[uur_idx],
+                            "boundary_layer_height": blh_lijst[uur_idx],
+                        }
+                        uurscores.append(migratie_bereken_score_uitgebreid(
+                            uur_weer, lat=punt["latitude"], lon=punt["longitude"]
+                        ))
+                    except (IndexError, KeyError, TypeError):
+                        uurscores.append(0.5)
+                else:
+                    uurscores.append(0.5)
+            uurscores_per_dag.append(uurscores)
+
+            # Dagelijkse score = gemiddelde over alle 24 uur (vroeger: uitsluitend 12:00 UTC)
+            score = round(sum(uurscores) / len(uurscores), 3) if uurscores else 0.5
+
+            # Weerdisplay op 12:00 UTC voor popup / tooltip
+            middag_idx = dag_idx * 24 + 12
             if hourly:
                 try:
-                    cape_lijst = hourly.get("cape") or [0] * MIGRATIE_FORECAST_HOURS
-                    blh_lijst  = hourly.get("boundary_layer_height") or [500] * MIGRATIE_FORECAST_HOURS
                     weer = {
                         "temperature_2m":       hourly["temperature_2m"][middag_idx],
                         "wind_speed_10m":        hourly["wind_speed_10m"][middag_idx],
@@ -824,9 +857,6 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
             else:
                 weer = None
 
-            score = migratie_bereken_score_uitgebreid(
-                weer, lat=punt["latitude"], lon=punt["longitude"]
-            )
             in_bene = (
                 BENE_LAT_MIN <= punt["latitude"] <= BENE_LAT_MAX
                 and BENE_LON_MIN <= punt["longitude"] <= BENE_LON_MAX
@@ -870,23 +900,42 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
                 "marker_radius":    marker_radius,
                 "be_nl_zone":       in_bene,
             })
-        return dag_punten
+        return dag_punten, uurscores_per_dag
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         alle_punt_resultaten = list(executor.map(verwerk_punt, punten))
 
     # Herorganiseer: [punt_idx][dag_idx] → [dag_idx][punt_idx]
     days_data: list[list[dict]] = [[] for _ in range(MIGRATIE_FORECAST_DAYS)]
-    for punt_resultaten in alle_punt_resultaten:
-        for dag_idx, dag_punt in enumerate(punt_resultaten):
+    alle_uurscores: list[list[list[float]]] = []  # [punt_idx][dag_idx][uur]
+    for dag_punten, uurscores_per_dag in alle_punt_resultaten:
+        for dag_idx, dag_punt in enumerate(dag_punten):
             days_data[dag_idx].append(dag_punt)
+        alle_uurscores.append(uurscores_per_dag)
 
     # Pas aanvoercorrectie toe: BE/NL-scores worden verminderd als France/Spanje
     # de dag ervoor slechte omstandigheden hadden (regen, tegenwind).
     days_data = _pas_aanvoer_toe(days_data)
 
+    # Tijdlijndata: gemiddelde uurlijkse migratiescore over alle rasterpunten per dag
+    n_tijdlijn_punten = len(alle_uurscores)
+    uurgemiddelden_per_dag: list[list[float]] = []
+    for dag_idx in range(MIGRATIE_FORECAST_DAYS):
+        if n_tijdlijn_punten:
+            uurgemiddelden = [
+                round(
+                    sum(alle_uurscores[p][dag_idx][u] for p in range(n_tijdlijn_punten))
+                    / n_tijdlijn_punten,
+                    3,
+                )
+                for u in range(24)
+            ]
+        else:
+            uurgemiddelden = [0.5] * 24
+        uurgemiddelden_per_dag.append(uurgemiddelden)
+
     opgehaald_om = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-    return days_data, dag_datums, opgehaald_om
+    return days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag
 
 
 # Controleer wijzigingen in invoer (gebruik session_state)
@@ -1282,7 +1331,7 @@ with tabs[2]:
 
     **Ankerpunt:** Tarifa (Spanje) — de klassieke doortochtpoort vanuit Afrika (Gibraltar-corridor).
 
-    **Wetenschappelijke factoren (waarden op 12:00 UTC):**
+    **Wetenschappelijke factoren (gemiddeld over alle 24 uur per dag — dag én nacht):**
     - 🧭 **Windrichting** (35 %): zuidenwind = rugwind voor noordwaartse voorjaarstrek
     - 🌧️ **Neerslag** (20 %): droog = gunstig — regenfronten zorgen voor stoppers
     - 📊 **Luchtdruk** (10 %): hogedrukgebied (> 1015 hPa) = stabiele omstandigheden
@@ -1344,7 +1393,7 @@ with tabs[2]:
     _res_label = "~50 × 50 km" if "50" in resolutie_keuze else "~100 × 100 km"
 
     with st.spinner("Weervoorspelling ophalen voor 6-daags migratieraster — even geduld..."):
-        days_data, dag_datums, opgehaald_om = laad_migratie_rasterdata_6daags(
+        days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag = laad_migratie_rasterdata_6daags(
             lat_step=_lat_step, lon_step=_lon_step
         )
 
@@ -1415,6 +1464,7 @@ with tabs[2]:
                 f"🌀 BLH: {punt['blh']} m<br>"
                 f"<b>✈️ Vlieghoogte: {vh_lbl}</b><br>"
                 f"<i style='font-size:11px;color:#555'>{vh_tip}</i>"
+                f"<br><i style='font-size:10px;color:#888'>Weerdisplay: 12:00 UTC · Score: 24-uurs gemiddelde</i>"
                 + (
                     f"<br><span style='color:#c47000;font-size:11px;'>"
                     f"🌟 BE/NL zone: ZO-wind (3–5 Bf) = optimaal</span>"
@@ -1448,6 +1498,38 @@ with tabs[2]:
             m_dag, height=500, returned_objects=[],
             use_container_width=True, key=f"raster_dag_{dag_idx}",
         )
+
+        # Tijdlijn: uurlijkse migratiescore (00:00–23:00 UTC) voor deze dag
+        uurscores_dag = uurgemiddelden_per_dag[dag_idx]
+        uur_df = pd.DataFrame({
+            "uur":   [f"{u:02d}:00" for u in range(24)],
+            "score": [round(s * 100) for s in uurscores_dag],
+        })
+        tijdlijn = (
+            alt.Chart(
+                uur_df,
+                title=f"Uurlijkse migratiescore — {dag_label} (gemiddelde {n_punten} rasterpunten, UTC)",
+            )
+            .mark_bar(size=16)
+            .encode(
+                x=alt.X("uur:O", title="Uur (UTC)", sort=None),
+                y=alt.Y("score:Q", scale=alt.Scale(domain=[0, 100]), title="Score (0–100)"),
+                color=alt.Color(
+                    "score:Q",
+                    scale=alt.Scale(
+                        domain=[0, 25, 50, 75, 100],
+                        range=["#0000ff", "#00aaff", "#aaff00", "#ffaa00", "#ff0000"],
+                    ),
+                    legend=None,
+                ),
+                tooltip=[
+                    alt.Tooltip("uur:O", title="Uur"),
+                    alt.Tooltip("score:Q", title="Migratiescore (0–100)"),
+                ],
+            )
+            .properties(height=130)
+        )
+        st.altair_chart(tijdlijn, use_container_width=True)
         st.divider()
 
     # Corridoranalyse voor BE / NL / DE
