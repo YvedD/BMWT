@@ -216,9 +216,9 @@ MIGRATIE_FORECAST_DAYS  = 6
 MIGRATIE_FORECAST_HOURS = MIGRATIE_FORECAST_DAYS * 24   # = 144 uurlijkse waarden
 
 # Vlieghoogte-drempelwaarden (km/h)
-VLIEGHOOGTE_LAAG_MIN    = 29    # 5 Bf: vogels vliegen laag (waarneembaar)
-VLIEGHOOGTE_MIDDEL_MIN  = 12    # 3 Bf: middelhoogte
-VLIEGHOOGTE_GESTOPT_MIN = 50    # 7 Bf: trek grotendeels afgeremd
+VLIEGHOOGTE_LAAG_MIN         = 29    # 5–6 Bf: vogels vliegen laag (waarneembaar)
+VLIEGHOOGTE_MIDDEL_MIN       = 12    # 3–4 Bf: middelhoogte
+VLIEGHOOGTE_GESTOPT_THRESHOLD = 50   # ≥ 7 Bf: trek grotendeels afgeremd
 
 # Kaartcentrum voor BE/NL/DE-weergave
 KAART_CENTER_LAT = 50.5
@@ -468,17 +468,17 @@ def migratie_vlieghoogte(wind_speed_kmh: float) -> tuple[str, str, int]:
     """
     Bepaal de verwachte vlieghoogte van trekvogels op basis van windkracht.
 
-    Hogere wind (< 7 Bf / < 50 km/h) duwt vogels naar lagere vlieghoogtes,
+    Hogere wind (5–6 Bf, 29–49 km/h) duwt vogels naar lagere vlieghoogtes,
     waardoor ze beter waarneembaar zijn. Bij weinig wind op gunstige trekdagen
     vliegen vogels juist hoog en worden ze minder opgemerkt.
 
     Returns (label, toelichting, marker_radius).
-      0–2 Bf (< 12 km/h)  : hoog     — moeilijk te zien      → kleine cirkel
-      3–4 Bf (12–28 km/h) : middel   — matig zichtbaar        → middel cirkel
-      5–6 Bf (29–49 km/h) : laag     — goed waarneembaar      → grote cirkel
-      ≥ 7 Bf (≥ 50 km/h)  : gestopt  — trek afgeremd          → kleine cirkel
+      0–2 Bf (< 12 km/h)    : hoog   — moeilijk te zien      → kleine cirkel
+      3–4 Bf (12–28 km/h)   : middel — matig zichtbaar        → middel cirkel
+      5–6 Bf (29–49 km/h)   : laag   — goed waarneembaar      → grote cirkel
+      ≥ 7 Bf (≥ 50 km/h)    : gestopt — trek afgeremd         → kleine cirkel
     """
-    if wind_speed_kmh >= VLIEGHOOGTE_GESTOPT_MIN:
+    if wind_speed_kmh >= VLIEGHOOGTE_GESTOPT_THRESHOLD:
         return "Trek beperkt ⛔", "Wind ≥ 7 Bf — trek grotendeels afgeremd", 4
     elif wind_speed_kmh >= VLIEGHOOGTE_LAAG_MIN:
         return "Laag 🔽", "Wind 5–6 Bf — vogels vliegen laag, goed waarneembaar", 10

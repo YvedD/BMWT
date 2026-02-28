@@ -45,9 +45,9 @@ FORECAST_DAYS = 6     # today + 5 days ahead
 FORECAST_HOURS = FORECAST_DAYS * 24   # = 144 hourly values
 
 # Flight altitude thresholds (km/h)
-VLIEGHOOGTE_GESTOPT_MIN = 50   # ≥ 7 Bf: migration suppressed
-VLIEGHOOGTE_LAAG_MIN    = 29   # 5–6 Bf: birds fly low (good observability)
-VLIEGHOOGTE_MIDDEL_MIN  = 12   # 3–4 Bf: mid-altitude
+VLIEGHOOGTE_GESTOPT_THRESHOLD = 50   # ≥ 7 Bf: migration suppressed
+VLIEGHOOGTE_LAAG_MIN          = 29   # 5–6 Bf: birds fly low (good observability)
+VLIEGHOOGTE_MIDDEL_MIN        = 12   # 3–4 Bf: mid-altitude
 
 # Default fallback values for missing forecast variables
 CAPE_DEFAULT = 0.0
@@ -341,7 +341,7 @@ def flight_altitude(wind_speed_kmh: float) -> str:
     """
     Return expected flight altitude label based on wind speed.
 
-    Higher wind (< 7 Bf / < 50 km/h) forces birds lower → better observable.
+    Higher wind (5–6 Bf, 29–49 km/h) forces birds lower → better observable.
     Calm conditions → birds fly high → less often noticed.
 
       0–2 Bf (< 12 km/h)  : HIGH  — hard to see
@@ -349,7 +349,7 @@ def flight_altitude(wind_speed_kmh: float) -> str:
       5–6 Bf (29–49 km/h) : LOW   — well observable
       ≥ 7 Bf (≥ 50 km/h)  : migration suppressed
     """
-    if wind_speed_kmh >= VLIEGHOOGTE_GESTOPT_MIN:
+    if wind_speed_kmh >= VLIEGHOOGTE_GESTOPT_THRESHOLD:
         return "Trek beperkt"
     elif wind_speed_kmh >= VLIEGHOOGTE_LAAG_MIN:
         return "Laag"
