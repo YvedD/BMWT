@@ -455,11 +455,41 @@ def process_point(point: dict) -> dict:
     )
     days = []
     for day_idx in range(FORECAST_DAYS):
-        midday_idx = day_idx * 24 + 12  # 12:00 UTC
+        cape_list = (hourly.get("cape") or [CAPE_DEFAULT] * FORECAST_HOURS) if hourly else [CAPE_DEFAULT] * FORECAST_HOURS
+        blh_list  = (hourly.get("boundary_layer_height") or [BLH_DEFAULT] * FORECAST_HOURS) if hourly else [BLH_DEFAULT] * FORECAST_HOURS
+
+        # Compute hourly scores for all 24 hours; use the daily average (not just midday)
+        hourly_scores: list[float] = []
+        for hour in range(24):
+            hour_idx = day_idx * 24 + hour
+            if hourly:
+                try:
+                    hour_weather = {
+                        "temperature_2m":       hourly["temperature_2m"][hour_idx],
+                        "wind_speed_10m":        hourly["wind_speed_10m"][hour_idx],
+                        "wind_direction_10m":    hourly["wind_direction_10m"][hour_idx],
+                        "precipitation":         hourly["precipitation"][hour_idx],
+                        "visibility":            hourly["visibility"][hour_idx],
+                        "cloud_cover":           hourly["cloud_cover"][hour_idx],
+                        "pressure_msl":          hourly["pressure_msl"][hour_idx],
+                        "cape":                  cape_list[hour_idx],
+                        "boundary_layer_height": blh_list[hour_idx],
+                    }
+                    h_score, _ = compute_migration_score(hour_weather, lat=lat, lon=lon)
+                    hourly_scores.append(h_score)
+                except (IndexError, KeyError, TypeError):
+                    hourly_scores.append(0.5)
+            else:
+                hourly_scores.append(0.5)
+
+        # Daily score = average over all 24 hours (previously: midday snapshot only)
+        score = round(sum(hourly_scores) / len(hourly_scores), 3) if hourly_scores else 0.5
+        confidence = round(0.50 + 0.40 * math.sqrt(score), 3)
+
+        # Keep midday weather snapshot for display / reference purposes
+        midday_idx = day_idx * 24 + 12
         if hourly:
             try:
-                cape_list = hourly.get("cape") or [CAPE_DEFAULT] * FORECAST_HOURS
-                blh_list  = hourly.get("boundary_layer_height") or [BLH_DEFAULT] * FORECAST_HOURS
                 weather = {
                     "temperature_2m":       hourly["temperature_2m"][midday_idx],
                     "wind_speed_10m":        hourly["wind_speed_10m"][midday_idx],
@@ -476,7 +506,6 @@ def process_point(point: dict) -> dict:
         else:
             weather = None
 
-        score, confidence = compute_migration_score(weather, lat=lat, lon=lon)
         wind_spd = float(weather.get("wind_speed_10m", 0)) if weather else 0.0
         days.append({
             "day_offset":   day_idx,
@@ -524,7 +553,7 @@ def build_payload() -> dict:
     return {
         "updated_at":    datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "ttl_minutes":   60,
-        "source":        "bmwt-github-actions-v3-tarifa-raster-6day-supply-chain",
+        "source":        "bmwt-github-actions-v4-tarifa-raster-6day-supply-chain-24h-avg",
         "raster": {
             "anchor_lat":    ANCHOR_LAT,
             "anchor_lon":    ANCHOR_LON,
