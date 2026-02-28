@@ -4,7 +4,7 @@ import folium
 import requests
 from streamlit_folium import st_folium
 import pandas as pd
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from dateutil.parser import parse
 import pytz
 from io import BytesIO
@@ -14,7 +14,10 @@ import colorsys
 import concurrent.futures
 from geopy.exc import GeocoderUnavailable
 import streamlit.components.v1 as components
+from timezonefinder import TimezoneFinder
 from soorten_geluiden import iframe_data
+
+_TF = TimezoneFinder()
 
 
 st.set_page_config(
@@ -208,9 +211,65 @@ MIGRATIE_LAT_MAX    = 56.0
 MIGRATIE_LON_MIN    = -9.5
 MIGRATIE_LON_MAX    = 15.3
 
+# 5-daagse voorspelling: vandaag + 5 dagen = 6 kaarten
+MIGRATIE_FORECAST_DAYS  = 6
+MIGRATIE_FORECAST_HOURS = MIGRATIE_FORECAST_DAYS * 24   # = 144 uurlijkse waarden
+
+# Vlieghoogte-drempelwaarden (km/h)
+VLIEGHOOGTE_LAAG_MIN    = 29    # 5 Bf: vogels vliegen laag (waarneembaar)
+VLIEGHOOGTE_MIDDEL_MIN  = 12    # 3 Bf: middelhoogte
+VLIEGHOOGTE_GESTOPT_MIN = 50    # 7 Bf: trek grotendeels afgeremd
+
+# Kaartcentrum voor BE/NL/DE-weergave
+KAART_CENTER_LAT = 50.5
+KAART_CENTER_LON = 7.5
+
+# Bounding box voor corridoranalyse BE/NL/DE
+CORRIDOR_LAT_MIN = 49.5
+CORRIDOR_LAT_MAX = 55.5
+CORRIDOR_LON_MIN = 2.5
+CORRIDOR_LON_MAX = 15.5
+
+# Bounding box voor BE/NL ZO-wind optimum (vogels gestuwd vanuit centraal-Frankrijk)
+# ZO-wind (135°, 3–5 Bf) is de ideale windrichting voor trek langs de Noordzeekust
+BENE_LAT_MIN        = 49.5    # zuidgrens BE
+BENE_LAT_MAX        = 53.5    # noordgrens NL
+BENE_LON_MIN        = 2.0     # westkust BE/NL
+BENE_LON_MAX        = 8.0     # oost-NL / ruhr-gebied
+BENE_WIND_OPT_DIR   = 135.0   # ideale windrichting ZO (graden)
+
+# Asymmetrisch verval van de windrichtingsscore rond ZO (135°):
+#   Richting ZZO/Z (met Z-component): trager verval → ZZO scoort hoger dan OZO
+#   Richting OZO/O (met O-component): sneller verval → scoort lager dan ZZO
+BENE_WIND_FALLOFF_S = 225.0   # graden: score daalt naar 0 bij W (315°, 180° + 135° = W)
+BENE_WIND_FALLOFF_E = 135.0   # graden: score daalt naar 0 bij N (0°, 135° terug van ZO)
+
+# Windkrachtbereiken voor BE/NL (Beaufort → km/h)
+BENE_WIND_SPEED_1BF =  1.0    # Bf 1 ondergrens
+BENE_WIND_SPEED_3BF = 12.0    # Bf 3 ondergrens (= optimum ondergrens)
+BENE_WIND_SPEED_5BF = 38.0    # Bf 5 bovengrens (= optimum bovengrens)
+BENE_WIND_SPEED_7BF = 50.0    # Bf 7 ondergrens (= trek grotendeels afgeremd)
+
+
+def migratie_is_geldig_punt(lat: float, lon: float) -> bool:
+    """Return True als het rasterpunt op land valt en niet in het Verenigd Koninkrijk.
+
+    TimezoneFinder retourneert None voor oceanen, maar Etc/GMT* voor open zee.
+    Beide worden als 'in zee' beschouwd.
+    """
+    tz = _TF.timezone_at(lat=lat, lng=lon)
+    if tz is None:
+        return False          # punt in oceaan / diepe zee
+    if tz.startswith("Etc/"):
+        return False          # open zee (UTC-offset tijdzones)
+    if tz == "Europe/London":
+        return False          # Verenigd Koninkrijk
+    return True
+
 
 def migratie_genereer_rasterpunten():
-    """Genereer rasterpunten van ~100×100 km met Tarifa als ankerpunt."""
+    """Genereer rasterpunten van ~100×100 km met Tarifa als ankerpunt.
+    Punten in zee en het Verenigd Koninkrijk worden automatisch uitgefilterd."""
     lats = set()
     n = 0
     while True:
@@ -250,7 +309,8 @@ def migratie_genereer_rasterpunten():
     punten = []
     for lat in sorted(lats):
         for lon in sorted(lons):
-            punten.append({"latitude": lat, "longitude": lon})
+            if migratie_is_geldig_punt(lat, lon):
+                punten.append({"latitude": lat, "longitude": lon})
     return punten
 
 
@@ -391,6 +451,322 @@ def laad_migratie_rasterdata():
     opgehaald_om = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     return resultaten, opgehaald_om
 
+
+# === UITGEBREIDE 5-DAAGSE MIGRATIEVOORSPELLING ===
+
+# Nederlandse dag- en maandafkortingen voor datumopmaak
+_NL_WEEKDAGEN = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"]
+_NL_MAANDEN   = ["jan", "feb", "mrt", "apr", "mei", "jun",
+                  "jul", "aug", "sep", "okt", "nov", "dec"]
+
+
+def _dag_label_nl(d: date) -> str:
+    return f"{_NL_WEEKDAGEN[d.weekday()]} {d.day} {_NL_MAANDEN[d.month - 1]} {d.year}"
+
+
+def migratie_vlieghoogte(wind_speed_kmh: float) -> tuple[str, str, int]:
+    """
+    Bepaal de verwachte vlieghoogte van trekvogels op basis van windkracht.
+
+    Hogere wind (< 7 Bf / < 50 km/h) duwt vogels naar lagere vlieghoogtes,
+    waardoor ze beter waarneembaar zijn. Bij weinig wind op gunstige trekdagen
+    vliegen vogels juist hoog en worden ze minder opgemerkt.
+
+    Returns (label, toelichting, marker_radius).
+      0–2 Bf (< 12 km/h)  : hoog     — moeilijk te zien      → kleine cirkel
+      3–4 Bf (12–28 km/h) : middel   — matig zichtbaar        → middel cirkel
+      5–6 Bf (29–49 km/h) : laag     — goed waarneembaar      → grote cirkel
+      ≥ 7 Bf (≥ 50 km/h)  : gestopt  — trek afgeremd          → kleine cirkel
+    """
+    if wind_speed_kmh >= VLIEGHOOGTE_GESTOPT_MIN:
+        return "Trek beperkt ⛔", "Wind ≥ 7 Bf — trek grotendeels afgeremd", 4
+    elif wind_speed_kmh >= VLIEGHOOGTE_LAAG_MIN:
+        return "Laag 🔽", "Wind 5–6 Bf — vogels vliegen laag, goed waarneembaar", 10
+    elif wind_speed_kmh >= VLIEGHOOGTE_MIDDEL_MIN:
+        return "Middel ↕️", "Wind 3–4 Bf — middelhoogte, matig zichtbaar", 7
+    else:
+        return "Hoog 🔼", "Wind 0–2 Bf — vogels vliegen hoog, minder zichtbaar", 5
+
+
+def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
+    """Haal 6-daagse uurlijkse weervoorspelling op voor één rasterpunt."""
+    try:
+        resp = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude":  punt["latitude"],
+                "longitude": punt["longitude"],
+                "hourly": (
+                    "temperature_2m,wind_speed_10m,wind_direction_10m,"
+                    "precipitation,visibility,cloud_cover,"
+                    "pressure_msl,cape,boundary_layer_height"
+                ),
+                "timezone": "UTC",
+                "forecast_days": 6,
+            },
+            timeout=20,
+        )
+        if resp.status_code == 200:
+            return resp.json().get("hourly")
+    except Exception:
+        pass
+    return None
+
+
+def migratie_bereken_score_uitgebreid(
+    weer: dict | None,
+    lat: float = 0.0,
+    lon: float = 0.0,
+) -> float:
+    """
+    Bereken migratiescore (0.0–1.0) inclusief luchtdruk, thermiek en regenfronten.
+
+    Gewichten:
+      35 % windrichting   (regionaal gecorrigeerd — zie hieronder)
+      20 % neerslag       (droog = gunstig; regenfronten = stoppers)
+      10 % luchtdruk MSL  (hogedrukgebied > 1015 hPa = stabiele omstandigheden)
+      10 % zicht
+      10 % windkracht     (regionaal gecorrigeerd — zie hieronder)
+       5 % temperatuur    (8–20 °C)
+       5 % grenslaagdikte (BLH > 1500 m = goede thermiek voor zwevers & roofvogels)
+       5 % CAPE           (convectieve beschikbare energie = thermiekindicator)
+
+    Regionale correctie BE/NL (BENE_LAT/LON_MIN/MAX):
+      De beste trekdagen voor België en Nederland worden bepaald door ZO-wind
+      (≈ 135°, 3–5 Bf). Vogels worden dan vanuit centraal-Frankrijk naar de
+      Noordzeekust gestuwd. De windrichting-formule verschuift het optimum van
+      180° (Z, algemeen) naar 135° (ZO, BE/NL):
+        score = (1 - cos(wind_richting + 45°)) / 2  → max bij 135°
+      De windkracht-drempel verschuift naar 3–5 Bf (12–38 km/h).
+    """
+    if not weer:
+        return 0.5
+
+    wind_kracht   = float(weer.get("wind_speed_10m", 0))
+    wind_richting = float(weer.get("wind_direction_10m", 180))
+    temperatuur   = float(weer.get("temperature_2m", 12))
+    neerslag      = float(weer.get("precipitation", 0))
+    zicht         = float(weer.get("visibility", 10000))
+    druk          = float(weer.get("pressure_msl", 1013))
+    cape          = float(weer.get("cape", 0))
+    blh           = float(weer.get("boundary_layer_height", 500))
+
+    in_bene = (
+        BENE_LAT_MIN <= lat <= BENE_LAT_MAX
+        and BENE_LON_MIN <= lon <= BENE_LON_MAX
+    )
+
+    if in_bene:
+        # --- BE/NL asymmetric wind direction score ---
+        # Peak at ZO (135°). Angular distance from ZO:
+        #   positive δ  = clockwise toward ZZO → Z → ZW → W  (southerly component)
+        #   negative δ  = counter-clockwise toward OZO → O → N (easterly component)
+        # Slower decay toward the south (ZZO scores higher than OZO at equal angular
+        # distance), faster decay toward the east, so:
+        #   ZO (135°) > ZZO (157.5°) > OZO (112.5°) > Z (180°) > O (90°) > N/W ≈ 0
+        delta = ((wind_richting - BENE_WIND_OPT_DIR) + 180.0) % 360.0 - 180.0
+        if delta >= 0:
+            # South side: reach 0 at BENE_WIND_FALLOFF_S degrees past ZO (= near W)
+            wind_richting_score = max(
+                0.0, math.cos(math.radians(delta * 180.0 / BENE_WIND_FALLOFF_S))
+            )
+        else:
+            # East side: reach 0 at BENE_WIND_FALLOFF_E degrees before ZO (= near N)
+            wind_richting_score = max(
+                0.0, math.cos(math.radians(abs(delta) * 180.0 / BENE_WIND_FALLOFF_E))
+            )
+
+        # --- BE/NL tiered wind speed score ---
+        # Prioriteiten (beste → slechtste):
+        #   3–5 Bf (12–38 km/h) = optimaal  → score 1.0
+        #   1–3 Bf  (1–12 km/h) = goed      → score 0.2 oplopend naar 1.0
+        #   0  Bf   (< 1 km/h)  = kalm      → score 0.2  (vogels vliegen hoog)
+        #   6  Bf  (38–50 km/h) = afnemend  → score 1.0 → 0.3
+        #   7+ Bf  (≥ 50 km/h)  = afgeremd  → score ≤ 0.3
+        if wind_kracht < BENE_WIND_SPEED_1BF:
+            wind_kracht_score = 0.2
+        elif wind_kracht < BENE_WIND_SPEED_3BF:
+            wind_kracht_score = 0.2 + (
+                (wind_kracht - BENE_WIND_SPEED_1BF)
+                / (BENE_WIND_SPEED_3BF - BENE_WIND_SPEED_1BF)
+            ) * 0.8
+        elif wind_kracht <= BENE_WIND_SPEED_5BF:
+            wind_kracht_score = 1.0
+        elif wind_kracht < BENE_WIND_SPEED_7BF:
+            wind_kracht_score = max(
+                0.3, 1.0 - (wind_kracht - BENE_WIND_SPEED_5BF)
+                / (BENE_WIND_SPEED_7BF - BENE_WIND_SPEED_5BF) * 0.7
+            )
+        else:
+            wind_kracht_score = max(0.0, 0.3 - (wind_kracht - BENE_WIND_SPEED_7BF) / 30.0)
+    else:
+        # Algemeen: Z-wind (180°) = ideale rugwind; N (0°/360°) = tegenwind
+        wind_richting_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
+
+        # Algemeen: 5–25 km/h = optimaal
+        if wind_kracht <= 5:
+            wind_kracht_score = wind_kracht / 5.0
+        elif wind_kracht <= 25:
+            wind_kracht_score = 1.0
+        else:
+            wind_kracht_score = max(0.0, 1.0 - (wind_kracht - 25) / 35.0)
+
+    # Neerslag: droog = gunstig; regenfronten veroorzaken stoppers
+    neerslag_score = max(0.0, 1.0 - neerslag / 5.0)
+
+    # Zicht
+    zicht_score = min(1.0, zicht / 10000.0)
+
+    # Temperatuur: 8–20 °C = optimaal voor voorjaarstrek
+    if 8 <= temperatuur <= 20:
+        temp_score = 1.0
+    elif temperatuur < 8:
+        temp_score = max(0.0, (temperatuur + 5) / 13.0)
+    else:
+        temp_score = max(0.0, 1.0 - (temperatuur - 20) / 15.0)
+
+    # Luchtdruk: hogedrukgebied gunstig — 1025+ hPa ≈ 1.0, < 995 hPa ≈ 0.0
+    druk_score = max(0.0, min(1.0, (druk - 995.0) / 30.0))
+
+    # Grenslaagdikte (BLH): hoge waarden = goede thermiek voor zwevers
+    blh_score = min(1.0, blh / 1500.0)
+
+    # CAPE: matige convectieve energie gunstig voor thermiekzwevers;
+    # te hoog (> 1500 J/kg) = onweersrisico
+    if cape <= 0:
+        cape_score = 0.2
+    elif cape <= 500:
+        cape_score = 0.4 + (cape / 500.0) * 0.5
+    elif cape <= 1500:
+        cape_score = 0.9 - ((cape - 500) / 1000.0) * 0.5
+    else:
+        cape_score = max(0.0, 0.4 - (cape - 1500) / 1500.0)
+
+    # BE/NL: windrichting weegt zwaarder (40 %) en windkracht lichter (5 %)
+    # zodat ZO 1–3Bf boven ZZO 3–5Bf uitkomt — richting is dé discriminator.
+    # Algemeen: 35 % windrichting, 10 % windkracht.
+    if in_bene:
+        score = (
+            0.40 * wind_richting_score
+            + 0.05 * wind_kracht_score
+            + 0.20 * neerslag_score
+            + 0.10 * zicht_score
+            + 0.05 * temp_score
+            + 0.10 * druk_score
+            + 0.05 * blh_score
+            + 0.05 * cape_score
+        )
+    else:
+        score = (
+            0.35 * wind_richting_score
+            + 0.10 * wind_kracht_score
+            + 0.20 * neerslag_score
+            + 0.10 * zicht_score
+            + 0.05 * temp_score
+            + 0.10 * druk_score
+            + 0.05 * blh_score
+            + 0.05 * cape_score
+        )
+    return round(min(1.0, max(0.0, score)), 3)
+
+
+@st.cache_data(ttl=1800)
+def laad_migratie_rasterdata_6daags():
+    """
+    Haal 6-daagse weervoorspelling op voor alle geldige rasterpunten
+    (vandaag + 5 dagen). Zeepunten en het VK zijn al uitgefilterd door
+    migratie_genereer_rasterpunten(). Retourneert
+    (days_data, dag_datums, opgehaald_om).
+    days_data[i] = lijst van punt-dicts op basis van middagwaarden (12:00 UTC).
+    """
+    punten = migratie_genereer_rasterpunten()
+    vandaag = date.today()
+    dag_datums = [_dag_label_nl(vandaag + timedelta(days=i)) for i in range(MIGRATIE_FORECAST_DAYS)]
+
+    def verwerk_punt(punt: dict) -> list[dict]:
+        hourly = _haal_weer_forecast_rasterpunt(punt)
+        dag_punten = []
+        for dag_idx in range(MIGRATIE_FORECAST_DAYS):
+            middag_idx = dag_idx * 24 + 12   # 12:00 UTC per dag
+            if hourly:
+                try:
+                    cape_lijst = hourly.get("cape") or [0] * MIGRATIE_FORECAST_HOURS
+                    blh_lijst  = hourly.get("boundary_layer_height") or [500] * MIGRATIE_FORECAST_HOURS
+                    weer = {
+                        "temperature_2m":       hourly["temperature_2m"][middag_idx],
+                        "wind_speed_10m":        hourly["wind_speed_10m"][middag_idx],
+                        "wind_direction_10m":    hourly["wind_direction_10m"][middag_idx],
+                        "precipitation":         hourly["precipitation"][middag_idx],
+                        "visibility":            hourly["visibility"][middag_idx],
+                        "cloud_cover":           hourly["cloud_cover"][middag_idx],
+                        "pressure_msl":          hourly["pressure_msl"][middag_idx],
+                        "cape":                  cape_lijst[middag_idx],
+                        "boundary_layer_height": blh_lijst[middag_idx],
+                    }
+                except (IndexError, KeyError, TypeError):
+                    weer = None
+            else:
+                weer = None
+
+            score = migratie_bereken_score_uitgebreid(
+                weer, lat=punt["latitude"], lon=punt["longitude"]
+            )
+            in_bene = (
+                BENE_LAT_MIN <= punt["latitude"] <= BENE_LAT_MAX
+                and BENE_LON_MIN <= punt["longitude"] <= BENE_LON_MAX
+            )
+            wind_richting_txt = ""
+            wind_kracht_txt   = ""
+            temp_txt          = "?"
+            neerslag_txt      = "?"
+            druk_txt          = "?"
+            blh_txt           = "?"
+            vlieghoogte_lbl   = "?"
+            vlieghoogte_tip   = ""
+            marker_radius     = 7
+            if weer:
+                wind_speed_raw = float(weer.get("wind_speed_10m", 0))
+                wind_richting_txt = graden_naar_windrichting(
+                    float(weer.get("wind_direction_10m", 0))
+                )
+                wind_kracht_txt = kmh_naar_beaufort(wind_speed_raw)
+                temp_txt     = f"{float(weer.get('temperature_2m', 0)):.1f}"
+                neerslag_txt = f"{float(weer.get('precipitation', 0)):.1f}"
+                druk_txt     = f"{float(weer.get('pressure_msl', 1013)):.0f}"
+                blh_txt      = f"{int(float(weer.get('boundary_layer_height', 0)))}"
+                vlieghoogte_lbl, vlieghoogte_tip, marker_radius = migratie_vlieghoogte(
+                    wind_speed_raw
+                )
+            dag_punten.append({
+                "latitude":         punt["latitude"],
+                "longitude":        punt["longitude"],
+                "score":            score,
+                "klasse":           migratie_score_naar_klasse(score),
+                "kleur":            migratie_score_naar_kleur(score),
+                "wind_richting":    wind_richting_txt,
+                "wind_kracht":      wind_kracht_txt,
+                "temperatuur":      temp_txt,
+                "neerslag":         neerslag_txt,
+                "druk":             druk_txt,
+                "blh":              blh_txt,
+                "vlieghoogte":      vlieghoogte_lbl,
+                "vlieghoogte_tip":  vlieghoogte_tip,
+                "marker_radius":    marker_radius,
+                "be_nl_zone":       in_bene,
+            })
+        return dag_punten
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        alle_punt_resultaten = list(executor.map(verwerk_punt, punten))
+
+    # Herorganiseer: [punt_idx][dag_idx] → [dag_idx][punt_idx]
+    days_data: list[list[dict]] = [[] for _ in range(MIGRATIE_FORECAST_DAYS)]
+    for punt_resultaten in alle_punt_resultaten:
+        for dag_idx, dag_punt in enumerate(punt_resultaten):
+            days_data[dag_idx].append(dag_punt)
+
+    opgehaald_om = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    return days_data, dag_datums, opgehaald_om
 
 
 # Controleer wijzigingen in invoer (gebruik session_state)
@@ -778,39 +1154,67 @@ with tabs[1]:
 
 
 with tabs[2]:
-    st.header("🦅 Migratie Raster — Real-time Migratievoorspelling")
+    st.header("🦅 Migratie Raster — 5-Daagse Voorspelling")
     st.markdown("""
-    Real-time migratievoorspelling op basis van weergegevens voor een **100 × 100 km raster** over West-Europa.
+    Vijfdaagse migratievoorspelling op basis van weergegevens voor een **~100 × 100 km raster**
+    over **België, Nederland en Duitsland** (en omgeving).
+    Rasterpunten in zee en het Verenigd Koninkrijk worden buiten beschouwing gelaten.
 
-    **Ankerpunt:** Tarifa (Spanje) — het klassieke doortochtpunt voor vogeltrek vanuit Afrika (Gibraltar-corridor).
+    **Ankerpunt:** Tarifa (Spanje) — de klassieke doortochtpoort vanuit Afrika (Gibraltar-corridor).
 
-    **Kleurschaal migratiecodes:**
-    🔴 **ROOD** = Extreem gunstig (score ≥ 75/100) &nbsp;|&nbsp;
-    🟠 **ORANJE** = Goed (50–75) &nbsp;|&nbsp;
-    🟡 **GEEL** = Matig (25–50) &nbsp;|&nbsp;
-    🔵 **BLAUW** = Ongunstig (< 25)
+    **Wetenschappelijke factoren (waarden op 12:00 UTC):**
+    - 🧭 **Windrichting** (35 %): zuidenwind = rugwind voor noordwaartse voorjaarstrek
+    - 🌧️ **Neerslag** (20 %): droog = gunstig — regenfronten zorgen voor stoppers
+    - 📊 **Luchtdruk** (10 %): hogedrukgebied (> 1015 hPa) = stabiele omstandigheden
+    - 👁️ **Zicht** (10 %): helder zicht = gunstig
+    - 💨 **Windkracht** (10 %): matige wind (5–25 km/h) = optimaal voor trek
+    - 🌡️ **Temperatuur** (5 %): 8–20 °C = optimaal voor voorjaarstrek
+    - 🌀 **Grenslaagdikte / BLH** (5 %): > 1500 m = goede thermiek voor zwevers & roofvogels
+    - ⛈️ **CAPE** (5 %): convectieve beschikbare energie — thermiekindicator voor ooievaars, buizerds…
 
-    **Factoren:** windrichting (40 %, zuidenwind = gunstig voor noordwaartse trek) · neerslag (25 %) ·
-    windkracht (15 %) · zicht (10 %) · temperatuur (10 %).
+    🌟 **BE/NL regiocorrectie** (zone 49.5–53.5°N, 2–8°E) — vogels gestuwd vanuit centraal-Frankrijk
+    naar de Noordzeekust. Windrichting- én windkrachtscore zijn aangepast:
 
-    *Gegevens worden gecacheerd voor 30 minuten. Klik op "Ververs nu" voor actuele data.*
+    | Prioriteit | Windrichting | Windkracht |
+    |:---:|:---:|:---:|
+    | 1 | ZO (135°) | 3–5 Bf (12–38 km/h) |
+    | 2 | ZO (135°) | 1–3 Bf (1–12 km/h) |
+    | 3 | ZZO (157.5°) | 3–5 Bf |
+    | 4 | ZZO (157.5°) | 1–3 Bf |
+    | 5 | OZO (112.5°) | 3–5 Bf |
+    | 6 | OZO (112.5°) | 1–3 Bf |
+    | 7 | elke Z- of O-component | — |
+
+    Technisch: asymmetrische cosinus gecentreerd op 135° — trager verval naar ZZO/Z,
+    sneller verval naar OZO/O, zodat de volgorde ZO > ZZO > OZO > Z > O gegarandeerd is.
+
+    **Vlieghoogte & zichtbaarheid (cirkelgrootte op de kaart):**
+    Op *gunstige trekdagen met weinig wind* vliegen vogels **hoog** en worden ze minder opgemerkt.
+    Een hogere windkracht (< 7 Bf) duwt vogels naar **lagere hoogtes** en maakt ze beter waarneembaar.
+    De cirkelgrootte geeft dit aan: 🔵 *groot* = vogels laag & zichtbaar · 🔵 *klein* = vogels hoog of trek beperkt.
+
+    **Kleurschaal:** 🔴 TOP ≥ 75 · 🟠 GOED 50–75 · 🟡 MATIG 25–50 · 🔵 LAAG < 25
+
+    *Gegevens gecacheerd voor 30 minuten. Klik op "Ververs nu" voor actuele data.*
     """)
 
     _, col_btn = st.columns([5, 1])
     with col_btn:
-        if st.button("🔄 Ververs nu", key="ververs_raster"):
-            laad_migratie_rasterdata.clear()
+        if st.button("🔄 Ververs nu", key="ververs_raster_6d"):
+            laad_migratie_rasterdata_6daags.clear()
             st.rerun()
 
-    with st.spinner("Weergegevens ophalen voor migratieraster — even geduld..."):
-        raster_data, opgehaald_om = laad_migratie_rasterdata()
+    with st.spinner("Weervoorspelling ophalen voor 6-daags migratieraster — even geduld..."):
+        days_data, dag_datums, opgehaald_om = laad_migratie_rasterdata_6daags()
 
+    n_punten = len(days_data[0]) if days_data else 0
     st.caption(
-        f"⏱️ Gegevens opgehaald om **{opgehaald_om} UTC** — {len(raster_data)} rasterpunten"
-        f" ({MIGRATIE_LAT_STEP:.0f}° breedtegraad × {MIGRATIE_LON_STEP} lengtegraad ≈ 100 × 100 km)"
+        f"⏱️ Gegevens opgehaald om **{opgehaald_om} UTC** — "
+        f"{n_punten} rasterpunten per dag (zee & VK uitgesloten) · "
+        f"{MIGRATIE_LAT_STEP:.0f}° × {MIGRATIE_LON_STEP}° ≈ 100 × 100 km"
     )
 
-    # Kleurlegende
+    # Gedeelde kleurlegende (eenmalig boven alle 6 kaarten)
     st.markdown(
         """
         <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;
@@ -830,60 +1234,105 @@ with tabs[2]:
         unsafe_allow_html=True,
     )
 
-    # Folium kaart met gekleurde rasterpunten
-    m_raster = folium.Map(location=[46, 3], zoom_start=5, tiles="CartoDB positron")
-
-    for punt in raster_data:
-        score_pct = int(punt["score"] * 100)
-        kleur     = punt["kleur"]
-
-        popup_html = (
-            f"<div style='font-size:13px;min-width:170px;'>"
-            f"<b>Migratiecode: {score_pct}/100</b><br>"
-            f"<b>Klasse: {punt['klasse']}</b><br>"
-            f"📍 {punt['latitude']}°N, {punt['longitude']}°E<br>"
-            f"🧭 Wind: {punt['wind_richting']} {punt['wind_kracht']} Bf<br>"
-            f"🌡️ Temp: {punt['temperatuur']} °C<br>"
-            f"🌧️ Neerslag: {punt['neerslag']} mm"
-            f"</div>"
+    # 6 kaarten onder elkaar — vandaag + dag +1 t/m +5
+    for dag_idx, (raster_dag, dag_label) in enumerate(zip(days_data, dag_datums)):
+        dag_titel = "📅 **Vandaag**" if dag_idx == 0 else f"📅 **Dag +{dag_idx}**"
+        gem_score = (
+            round(sum(p["score"] for p in raster_dag) / len(raster_dag) * 100)
+            if raster_dag else 0
         )
-        tooltip_tekst = (
-            f"Score: {score_pct}/100 ({punt['klasse']})  "
-            f"| {punt['latitude']}°N {punt['longitude']}°E  "
-            f"| Wind: {punt['wind_richting']} {punt['wind_kracht']} Bf"
+        # Vlieghoogte-samenvatting voor de dag (meest voorkomende categorie)
+        if raster_dag:
+            vh_teller: dict[str, int] = {}
+            for p in raster_dag:
+                lbl = p.get("vlieghoogte", "?")
+                vh_teller[lbl] = vh_teller.get(lbl, 0) + 1
+            vh_meest = max(vh_teller, key=lambda k: vh_teller[k])
+        else:
+            vh_meest = "?"
+        st.markdown(
+            f"### {dag_titel} — {dag_label}  ·  gem. score: {gem_score}/100  ·  vlieghoogte: {vh_meest}"
         )
 
-        folium.CircleMarker(
-            location=[punt["latitude"], punt["longitude"]],
-            radius=7,
-            color=kleur,
-            fill=True,
-            fill_color=kleur,
-            fill_opacity=0.82,
-            weight=1,
-            popup=folium.Popup(popup_html, max_width=220),
-            tooltip=tooltip_tekst,
-        ).add_to(m_raster)
+        m_dag = folium.Map(location=[KAART_CENTER_LAT, KAART_CENTER_LON], zoom_start=5, tiles="CartoDB positron")
 
-    st_folium(m_raster, height=650, returned_objects=[], use_container_width=True)
+        for punt in raster_dag:
+            score_pct    = int(punt["score"] * 100)
+            kleur        = punt["kleur"]
+            radius       = punt.get("marker_radius", 7)
+            vh_lbl       = punt.get("vlieghoogte", "?")
+            vh_tip       = punt.get("vlieghoogte_tip", "")
+            popup_html = (
+                f"<div style='font-size:13px;min-width:210px;'>"
+                f"<b>Migratiecode: {score_pct}/100</b><br>"
+                f"<b>Klasse: {punt['klasse']}</b><br>"
+                f"📍 {punt['latitude']}°N, {punt['longitude']}°E<br>"
+                f"🧭 Wind: {punt['wind_richting']} {punt['wind_kracht']} Bf<br>"
+                f"🌡️ Temp: {punt['temperatuur']} °C<br>"
+                f"🌧️ Neerslag: {punt['neerslag']} mm<br>"
+                f"📊 Druk: {punt['druk']} hPa<br>"
+                f"🌀 BLH: {punt['blh']} m<br>"
+                f"<b>✈️ Vlieghoogte: {vh_lbl}</b><br>"
+                f"<i style='font-size:11px;color:#555'>{vh_tip}</i>"
+                + (
+                    "<br><span style='color:#c47000;font-size:11px;'>"
+                    "🌟 BE/NL zone: ZO-wind (3–5 Bf) = optimaal</span>"
+                    if punt.get("be_nl_zone") else ""
+                )
+                + "</div>"
+            )
+            tooltip_tekst = (
+                f"{dag_label} | {score_pct}/100 ({punt['klasse']}) "
+                f"| {punt['latitude']}°N {punt['longitude']}°E "
+                f"| {punt['wind_richting']} {punt['wind_kracht']} Bf "
+                f"| {punt['druk']} hPa | ✈️ {vh_lbl}"
+            )
+            folium.CircleMarker(
+                location=[punt["latitude"], punt["longitude"]],
+                radius=radius,
+                color=kleur,
+                fill=True,
+                fill_color=kleur,
+                fill_opacity=0.82,
+                weight=1,
+                popup=folium.Popup(popup_html, max_width=260),
+                tooltip=tooltip_tekst,
+            ).add_to(m_dag)
 
-    # Corridoranalyse: punten nabij de hoofd-migratiecorridor (Tarifa → Bredene)
-    with st.expander("📊 Corridoranalyse — hoofdcorridor Tarifa → Spanjaardduin Bredene"):
-        corridor_punten = sorted(
-            [p for p in raster_data if abs(p["longitude"] - MIGRATIE_ANCHOR_LON) <= MIGRATIE_LON_STEP],
-            key=lambda x: x["latitude"],
+        st_folium(
+            m_dag, height=500, returned_objects=[],
+            use_container_width=True, key=f"raster_dag_{dag_idx}",
         )
-        if corridor_punten:
-            corridor_df = pd.DataFrame([{
-                "Lat":          p["latitude"],
-                "Lon":          p["longitude"],
-                "Score":        f"{int(p['score'] * 100)}/100",
-                "Klasse":       p["klasse"],
-                "Wind":         f"{p['wind_richting']} {p['wind_kracht']} Bf",
-                "Temp (°C)":    p["temperatuur"],
-                "Neerslag (mm)": p["neerslag"],
-            } for p in corridor_punten])
-            st.dataframe(corridor_df, use_container_width=True)
+        st.divider()
+
+    # Corridoranalyse voor BE / NL / DE
+    with st.expander("📊 Corridoranalyse — België · Nederland · Duitsland (dag per dag)"):
+        for dag_idx, (raster_dag, dag_label) in enumerate(zip(days_data, dag_datums)):
+            corridor = sorted(
+                [
+                    p for p in raster_dag
+                    if CORRIDOR_LAT_MIN <= p["latitude"] <= CORRIDOR_LAT_MAX
+                    and CORRIDOR_LON_MIN <= p["longitude"] <= CORRIDOR_LON_MAX
+                ],
+                key=lambda x: (x["latitude"], x["longitude"]),
+            )
+            dag_kop = "Vandaag" if dag_idx == 0 else f"Dag +{dag_idx}"
+            st.markdown(f"**{dag_kop} — {dag_label}**")
+            if corridor:
+                corridor_df = pd.DataFrame([{
+                    "Lat":              p["latitude"],
+                    "Lon":              p["longitude"],
+                    "Score":            f"{int(p['score'] * 100)}/100",
+                    "Klasse":           p["klasse"],
+                    "Wind":             f"{p['wind_richting']} {p['wind_kracht']} Bf",
+                    "Temp (°C)":        p["temperatuur"],
+                    "Neerslag (mm)":    p["neerslag"],
+                    "Druk (hPa)":       p["druk"],
+                    "BLH (m)":          p["blh"],
+                    "✈️ Vlieghoogte":   p.get("vlieghoogte", "?"),
+                    "🌟 BE/NL opt.":    "ZO 3–5Bf" if p.get("be_nl_zone") else "",
+                } for p in corridor])
+                st.dataframe(corridor_df, use_container_width=True)
 
 with tabs[3]:
     st.header("CROW project")
