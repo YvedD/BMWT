@@ -250,10 +250,35 @@ BENE_WIND_SPEED_3BF = 12.0    # Bf 3 ondergrens (= optimum ondergrens)
 BENE_WIND_SPEED_5BF = 38.0    # Bf 5 bovengrens (= optimum bovengrens)
 BENE_WIND_SPEED_7BF = 50.0    # Bf 7 ondergrens (= trek grotendeels afgeremd)
 
+# ---------------------------------------------------------------------------
+# Aanvoercorridor: migratieaanvoer vanuit het zuiden naar BE/NL
+# Wetenschappelijke basis: migratie is een 'pijplijn'. Vogels passeren eerst
+# Spanje/Marokko (Tarifa-corridor), dan Frankrijk, vóór ze België bereiken.
+# Regenfronten of ongunstige winden ter hoogte van deze zones blokkeren de
+# aanvoer, ook al zijn de lokale omstandigheden in België gunstig.
+# Bronnen: Berthold (2001), Ellegren (1993), Schaub et al. (2004 PNAS).
+# ---------------------------------------------------------------------------
+SUPPLY_FRANCE_LAT_MIN   = 43.0  # Zuid-Frankrijk
+SUPPLY_FRANCE_LAT_MAX   = 49.5  # Noord-Frankrijk / Belgische grens
+SUPPLY_SPAIN_LAT_MIN    = 36.0  # Tarifa / Zuid-Spanje
+SUPPLY_SPAIN_LAT_MAX    = 43.0  # Noord-Spanje
+SUPPLY_CORRIDOR_LON_MIN = -2.0  # Westgrens migratieroute
+SUPPLY_CORRIDOR_LON_MAX = 10.0  # Oostgrens migratieroute
+SUPPLY_LAG_FRANCE       = 1     # 1 dag eerder: vogels in Fr. → volgende dag in BE
+SUPPLY_LAG_SPAIN        = 2     # 2 dagen eerder: vogels in Sp. → 2 dagen later in BE
+
+# Tijdzones die worden uitgesloten van het raster (eilanden / niet-migratiegebied)
+_UITGESLOTEN_TIJDZONES = frozenset({
+    "Europe/London",       # Groot-Brittannië & Noord-Ierland
+    "Europe/Dublin",       # Ierland
+    "Europe/Isle_of_Man",  # Man-eiland
+})
+
 
 def migratie_is_geldig_punt(lat: float, lon: float) -> bool:
-    """Return True als het rasterpunt op land valt en niet in het Verenigd Koninkrijk.
+    """Return True als het rasterpunt op land valt en niet in een uitgesloten gebied.
 
+    Uitgesloten: oceaan/zee, Groot-Brittannië, Noord-Ierland, Ierland, Man-eiland.
     TimezoneFinder retourneert None voor oceanen, maar Etc/GMT* voor open zee.
     Beide worden als 'in zee' beschouwd.
     """
@@ -262,18 +287,25 @@ def migratie_is_geldig_punt(lat: float, lon: float) -> bool:
         return False          # punt in oceaan / diepe zee
     if tz.startswith("Etc/"):
         return False          # open zee (UTC-offset tijdzones)
-    if tz == "Europe/London":
-        return False          # Verenigd Koninkrijk
+    if tz in _UITGESLOTEN_TIJDZONES:
+        return False          # uitgesloten regio's
     return True
 
 
-def migratie_genereer_rasterpunten():
-    """Genereer rasterpunten van ~100×100 km met Tarifa als ankerpunt.
-    Punten in zee en het Verenigd Koninkrijk worden automatisch uitgefilterd."""
+def migratie_genereer_rasterpunten(lat_step: float = None, lon_step: float = None):
+    """Genereer rasterpunten met Tarifa als ankerpunt.
+
+    Standaard ~100×100 km; geef lat_step=0.5 / lon_step=0.65 voor ~50×50 km.
+    Punten in zee, het VK, Ierland en het Man-eiland worden automatisch
+    uitgefilterd via migratie_is_geldig_punt().
+    """
+    _lat_step = lat_step if lat_step is not None else MIGRATIE_LAT_STEP
+    _lon_step = lon_step if lon_step is not None else MIGRATIE_LON_STEP
+
     lats = set()
     n = 0
     while True:
-        lat = round(MIGRATIE_ANCHOR_LAT + n * MIGRATIE_LAT_STEP, 1)
+        lat = round(MIGRATIE_ANCHOR_LAT + n * _lat_step, 2)
         if lat > MIGRATIE_LAT_MAX:
             break
         if lat >= MIGRATIE_LAT_MIN:
@@ -281,7 +313,7 @@ def migratie_genereer_rasterpunten():
         n += 1
     n = -1
     while True:
-        lat = round(MIGRATIE_ANCHOR_LAT + n * MIGRATIE_LAT_STEP, 1)
+        lat = round(MIGRATIE_ANCHOR_LAT + n * _lat_step, 2)
         if lat < MIGRATIE_LAT_MIN:
             break
         if lat <= MIGRATIE_LAT_MAX:
@@ -291,7 +323,7 @@ def migratie_genereer_rasterpunten():
     lons = set()
     n = 0
     while True:
-        lon = round(MIGRATIE_ANCHOR_LON + n * MIGRATIE_LON_STEP, 1)
+        lon = round(MIGRATIE_ANCHOR_LON + n * _lon_step, 2)
         if lon > MIGRATIE_LON_MAX:
             break
         if lon >= MIGRATIE_LON_MIN:
@@ -299,7 +331,7 @@ def migratie_genereer_rasterpunten():
         n += 1
     n = -1
     while True:
-        lon = round(MIGRATIE_ANCHOR_LON + n * MIGRATIE_LON_STEP, 1)
+        lon = round(MIGRATIE_ANCHOR_LON + n * _lon_step, 2)
         if lon < MIGRATIE_LON_MIN:
             break
         if lon <= MIGRATIE_LON_MAX:
@@ -670,16 +702,91 @@ def migratie_bereken_score_uitgebreid(
     return round(min(1.0, max(0.0, score)), 3)
 
 
+# ---------------------------------------------------------------------------
+# Aanvoercorrectie: migratieaanvoer vanuit het zuiden (supply chain)
+# ---------------------------------------------------------------------------
+
+def _pas_aanvoer_toe(days_data: list[list[dict]]) -> list[list[dict]]:
+    """
+    Pas de migratiescore voor BE/NL-punten aan op basis van aanvoer uit het zuiden.
+
+    Wetenschappelijke basis
+    ----------------------
+    Migratie is een 'pijplijn'. Vogels moeten eerst door Spanje (Tarifa-corridor,
+    36–43°N) en daarna door Frankrijk (43–49.5°N) passeren vóór ze België bereiken.
+    Regenfronten of sterke tegenwind ter hoogte van die zones blokkeren de aanvoer
+    volledig — ook al zijn de lokale omstandigheden in België die dag uitstekend.
+    Dit mechanisme is wetenschappelijk onderbouwd (Berthold 2001; Ellegren 1993;
+    Schaub et al. 2004 PNAS; Liechti 2006 J. Ornithol.).
+
+    Methode
+    -------
+    - Aanvoer uit Frankrijk : dag-index d → gebruik score op dag max(0, d-1)
+    - Aanvoer uit Spanje    : dag-index d → gebruik score op dag max(0, d-2)
+    - Gecombineerde supply-factor = 0.60 × Fr + 0.40 × Sp  (Frankrijk dominanter)
+    - Floor op 0.30: er trekken altijd wel een paar vogels, ook bij blokkade
+    - Gecorrigeerde score = ruwe score × supply_factor
+
+    Noot: voor dag 0 (vandaag) ontbreekt historische data voor Fr (gisteren) en
+    Sp (eergisteren). Dag 0 van het raster wordt als proxy gebruikt. Dit is een
+    conservatieve benadering.
+    """
+    n_days = len(days_data)
+
+    # Bereken gemiddelde passeerscores per dag voor Frans en Spaans corridor
+    france_gem: list[float] = []
+    spanje_gem: list[float] = []
+    for dag_idx in range(n_days):
+        fr_scores = [
+            p["score"] for p in days_data[dag_idx]
+            if SUPPLY_FRANCE_LAT_MIN <= p["latitude"] <= SUPPLY_FRANCE_LAT_MAX
+            and SUPPLY_CORRIDOR_LON_MIN <= p["longitude"] <= SUPPLY_CORRIDOR_LON_MAX
+        ]
+        sp_scores = [
+            p["score"] for p in days_data[dag_idx]
+            if SUPPLY_SPAIN_LAT_MIN <= p["latitude"] <= SUPPLY_SPAIN_LAT_MAX
+            and SUPPLY_CORRIDOR_LON_MIN <= p["longitude"] <= SUPPLY_CORRIDOR_LON_MAX
+        ]
+        france_gem.append(sum(fr_scores) / len(fr_scores) if fr_scores else 0.5)
+        spanje_gem.append(sum(sp_scores) / len(sp_scores) if sp_scores else 0.5)
+
+    for dag_idx in range(n_days):
+        fr_dag     = max(0, dag_idx - SUPPLY_LAG_FRANCE)
+        sp_dag     = max(0, dag_idx - SUPPLY_LAG_SPAIN)
+        fr_supply  = france_gem[fr_dag]
+        sp_supply  = spanje_gem[sp_dag]
+        # Gecombineerde aanvoerfactor (Frankrijk: meer directe impact)
+        supply_raw    = 0.60 * fr_supply + 0.40 * sp_supply
+        supply_factor = round(0.30 + 0.70 * supply_raw, 3)  # floor op 0.30
+
+        for punt in days_data[dag_idx]:
+            lat = punt["latitude"]
+            lon = punt["longitude"]
+            if BENE_LAT_MIN <= lat <= BENE_LAT_MAX and BENE_LON_MIN <= lon <= BENE_LON_MAX:
+                ruwe_score = punt["score"]
+                adj_score  = round(min(1.0, max(0.0, ruwe_score * supply_factor)), 3)
+                punt["score"]              = adj_score
+                punt["klasse"]             = migratie_score_naar_klasse(adj_score)
+                punt["kleur"]              = migratie_score_naar_kleur(adj_score)
+                punt["supply_factor"]      = supply_factor
+                punt["supply_frankrijk"]   = round(fr_supply, 3)
+                punt["supply_spanje"]      = round(sp_supply, 3)
+    return days_data
+
+
 @st.cache_data(ttl=1800)
-def laad_migratie_rasterdata_6daags():
+def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = None):
     """
     Haal 6-daagse weervoorspelling op voor alle geldige rasterpunten
-    (vandaag + 5 dagen). Zeepunten en het VK zijn al uitgefilterd door
-    migratie_genereer_rasterpunten(). Retourneert
-    (days_data, dag_datums, opgehaald_om).
+    (vandaag + 5 dagen). Zeepunten, VK, Ierland en Man-eiland zijn uitgefilterd.
+    Retourneert (days_data, dag_datums, opgehaald_om).
     days_data[i] = lijst van punt-dicts op basis van middagwaarden (12:00 UTC).
+
+    lat_step / lon_step bepalen de rasterresolutie:
+      None / standaard : ~100×100 km (MIGRATIE_LAT_STEP × MIGRATIE_LON_STEP)
+      0.5  / 0.65      : ~50×50 km  (4× meer punten, langzamere laadtijd)
     """
-    punten = migratie_genereer_rasterpunten()
+    punten = migratie_genereer_rasterpunten(lat_step=lat_step, lon_step=lon_step)
     vandaag = date.today()
     dag_datums = [_dag_label_nl(vandaag + timedelta(days=i)) for i in range(MIGRATIE_FORECAST_DAYS)]
 
@@ -764,6 +871,10 @@ def laad_migratie_rasterdata_6daags():
     for punt_resultaten in alle_punt_resultaten:
         for dag_idx, dag_punt in enumerate(punt_resultaten):
             days_data[dag_idx].append(dag_punt)
+
+    # Pas aanvoercorrectie toe: BE/NL-scores worden verminderd als France/Spanje
+    # de dag ervoor slechte omstandigheden hadden (regen, tegenwind).
+    days_data = _pas_aanvoer_toe(days_data)
 
     opgehaald_om = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     return days_data, dag_datums, opgehaald_om
@@ -1156,9 +1267,9 @@ with tabs[1]:
 with tabs[2]:
     st.header("🦅 Migratie Raster — 5-Daagse Voorspelling")
     st.markdown("""
-    Vijfdaagse migratievoorspelling op basis van weergegevens voor een **~100 × 100 km raster**
+    Vijfdaagse migratievoorspelling op basis van weergegevens voor een configureerbaar raster
     over **België, Nederland en Duitsland** (en omgeving).
-    Rasterpunten in zee en het Verenigd Koninkrijk worden buiten beschouwing gelaten.
+    Rasterpunten in zee, Groot-Brittannië, Ierland en het Man-eiland worden buiten beschouwing gelaten.
 
     **Ankerpunt:** Tarifa (Spanje) — de klassieke doortochtpoort vanuit Afrika (Gibraltar-corridor).
 
@@ -1188,6 +1299,14 @@ with tabs[2]:
     Technisch: asymmetrische cosinus gecentreerd op 135° — trager verval naar ZZO/Z,
     sneller verval naar OZO/O, zodat de volgorde ZO > ZZO > OZO > Z > O gegarandeerd is.
 
+    📦 **Aanvoercorrectie vanuit het zuiden** (BE/NL-zone):
+    Migratie is een *pijplijn*. Vogels passeren eerst Spanje (Tarifa-corridor, 36–43°N) en dan
+    Frankrijk (43–49.5°N) vóór ze België bereiken. Regen of tegenwind in die zones blokkeert de
+    aanvoer — ook als de lokale omstandigheden in België die dag uitstekend zijn.
+    De BE/NL-scores worden daarom vermenigvuldigd met een aanvoerfactor (min. 30 %) op basis van
+    de gemiddelde passeerscores van respectievelijk Frankrijk (1 dag eerder) en Spanje (2 dagen eerder).
+    *(Bronnen: Berthold 2001; Ellegren 1993; Schaub et al. 2004 PNAS)*
+
     **Vlieghoogte & zichtbaarheid (cirkelgrootte op de kaart):**
     Op *gunstige trekdagen met weinig wind* vliegen vogels **hoog** en worden ze minder opgemerkt.
     Een hogere windkracht (< 7 Bf) duwt vogels naar **lagere hoogtes** en maakt ze beter waarneembaar.
@@ -1198,20 +1317,33 @@ with tabs[2]:
     *Gegevens gecacheerd voor 30 minuten. Klik op "Ververs nu" voor actuele data.*
     """)
 
-    _, col_btn = st.columns([5, 1])
+    col_res, col_btn = st.columns([4, 1])
+    with col_res:
+        resolutie_keuze = st.radio(
+            "🗺️ Rasterresolutie:",
+            ["~100 × 100 km (snel)", "~50 × 50 km (trager, ~4× meer punten)"],
+            horizontal=True,
+            key="raster_resolutie",
+        )
     with col_btn:
         if st.button("🔄 Ververs nu", key="ververs_raster_6d"):
             laad_migratie_rasterdata_6daags.clear()
             st.rerun()
 
+    _lat_step = 0.5 if "50" in resolutie_keuze else MIGRATIE_LAT_STEP
+    _lon_step = 0.65 if "50" in resolutie_keuze else MIGRATIE_LON_STEP
+    _res_label = "~50 × 50 km" if "50" in resolutie_keuze else "~100 × 100 km"
+
     with st.spinner("Weervoorspelling ophalen voor 6-daags migratieraster — even geduld..."):
-        days_data, dag_datums, opgehaald_om = laad_migratie_rasterdata_6daags()
+        days_data, dag_datums, opgehaald_om = laad_migratie_rasterdata_6daags(
+            lat_step=_lat_step, lon_step=_lon_step
+        )
 
     n_punten = len(days_data[0]) if days_data else 0
     st.caption(
         f"⏱️ Gegevens opgehaald om **{opgehaald_om} UTC** — "
-        f"{n_punten} rasterpunten per dag (zee & VK uitgesloten) · "
-        f"{MIGRATIE_LAT_STEP:.0f}° × {MIGRATIE_LON_STEP}° ≈ 100 × 100 km"
+        f"{n_punten} rasterpunten per dag (zee, VK, Ierland & Man-eiland uitgesloten) · "
+        f"resolutie {_res_label} ({_lat_step}° × {_lon_step}°)"
     )
 
     # Gedeelde kleurlegende (eenmalig boven alle 6 kaarten)
@@ -1275,8 +1407,12 @@ with tabs[2]:
                 f"<b>✈️ Vlieghoogte: {vh_lbl}</b><br>"
                 f"<i style='font-size:11px;color:#555'>{vh_tip}</i>"
                 + (
-                    "<br><span style='color:#c47000;font-size:11px;'>"
-                    "🌟 BE/NL zone: ZO-wind (3–5 Bf) = optimaal</span>"
+                    f"<br><span style='color:#c47000;font-size:11px;'>"
+                    f"🌟 BE/NL zone: ZO-wind (3–5 Bf) = optimaal</span>"
+                    f"<br><span style='color:#0066cc;font-size:11px;'>"
+                    f"📦 Aanvoer: {int(punt.get('supply_factor', 1.0) * 100)}% "
+                    f"(Fr: {int(punt.get('supply_frankrijk', 0.5) * 100)}% / "
+                    f"Sp: {int(punt.get('supply_spanje', 0.5) * 100)}%)</span>"
                     if punt.get("be_nl_zone") else ""
                 )
                 + "</div>"
@@ -1331,6 +1467,9 @@ with tabs[2]:
                     "BLH (m)":          p["blh"],
                     "✈️ Vlieghoogte":   p.get("vlieghoogte", "?"),
                     "🌟 BE/NL opt.":    "ZO 3–5Bf" if p.get("be_nl_zone") else "",
+                    "📦 Aanvoer %":     f"{int(p.get('supply_factor', 1.0) * 100)}%" if p.get("be_nl_zone") else "",
+                    "Fr supply %":      f"{int(p.get('supply_frankrijk', 0.5) * 100)}%" if p.get("be_nl_zone") else "",
+                    "Sp supply %":      f"{int(p.get('supply_spanje', 0.5) * 100)}%" if p.get("be_nl_zone") else "",
                 } for p in corridor])
                 st.dataframe(corridor_df, use_container_width=True)
 
