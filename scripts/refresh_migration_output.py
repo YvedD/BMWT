@@ -74,6 +74,28 @@ BENE_WIND_SPEED_3BF = 12.0    # Bf 3 lower bound (optimal range start)
 BENE_WIND_SPEED_5BF = 38.0    # Bf 5 upper bound (optimal range end)
 BENE_WIND_SPEED_7BF = 50.0    # Bf 7 lower bound (migration suppressed)
 
+# ---------------------------------------------------------------------------
+# Supply corridor: upstream migration availability from the south
+# Science: migration is a pipeline — birds must first pass through Spain
+# (Tarifa corridor, 36–43°N) then France (43–49.5°N) before reaching BE/NL.
+# Rain fronts or headwinds in those zones block all supply, even when local
+# BE/NL conditions are excellent.
+# References: Berthold (2001); Ellegren (1993); Schaub et al. (2004 PNAS).
+# ---------------------------------------------------------------------------
+SUPPLY_FRANCE_LAT_MIN   = 43.0  # Southern France
+SUPPLY_FRANCE_LAT_MAX   = 49.5  # Northern France / Belgian border
+SUPPLY_SPAIN_LAT_MIN    = 36.0  # Tarifa / Southern Spain
+SUPPLY_SPAIN_LAT_MAX    = 43.0  # Northern Spain
+SUPPLY_CORRIDOR_LON_MIN = -2.0  # Western edge of migration route
+SUPPLY_CORRIDOR_LON_MAX = 10.0  # Eastern edge of migration route
+SUPPLY_LAG_FRANCE       = 1     # 1-day lag: French → Belgian passage
+SUPPLY_LAG_SPAIN        = 2     # 2-day lag: Spanish → Belgian passage
+SUPPLY_FRANCE_WEIGHT    = 0.60  # France corridor weight (more immediate influence)
+SUPPLY_SPAIN_WEIGHT     = 0.40  # Spain corridor weight
+SUPPLY_FACTOR_FLOOR     = 0.30  # Minimum supply factor (some birds always pass)
+SUPPLY_FACTOR_RANGE     = 0.70  # Working range of supply factor (1 − floor)
+DEFAULT_CORRIDOR_SCORE  = 0.50  # Fallback when corridor is empty
+
 _TF = TimezoneFinder()
 
 
@@ -81,9 +103,17 @@ _TF = TimezoneFinder()
 # Land / UK filter
 # ---------------------------------------------------------------------------
 
-def is_geldig_punt(lat: float, lon: float) -> bool:
-    """Return True als het punt op land valt en niet in het Verenigd Koninkrijk.
+_EXCLUDED_TIMEZONES = frozenset({
+    "Europe/London",       # Great Britain & Northern Ireland
+    "Europe/Dublin",       # Ireland
+    "Europe/Isle_of_Man",  # Isle of Man
+})
 
+
+def is_geldig_punt(lat: float, lon: float) -> bool:
+    """Return True als het punt op land valt en niet in een uitgesloten gebied.
+
+    Uitgesloten: oceaan/zee, Groot-Brittannië, Noord-Ierland, Ierland, Man-eiland.
     TimezoneFinder retourneert None voor oceanen, maar Etc/GMT* voor open zee.
     Beide worden als 'in zee' beschouwd.
     """
@@ -92,8 +122,8 @@ def is_geldig_punt(lat: float, lon: float) -> bool:
         return False          # oceaan / diepe zee
     if tz.startswith("Etc/"):
         return False          # open zee (UTC-offset tijdzones)
-    if tz == "Europe/London":
-        return False          # Verenigd Koninkrijk
+    if tz in _EXCLUDED_TIMEZONES:
+        return False          # uitgesloten regio's
     return True
 
 
@@ -362,6 +392,58 @@ def flight_altitude(wind_speed_kmh: float) -> str:
 # Build payload
 # ---------------------------------------------------------------------------
 
+def apply_supply_chain_correction(results: list[dict]) -> list[dict]:
+    """
+    Adjust BE/NL migration scores based on upstream supply from Spain & France.
+
+    Method mirrors _pas_aanvoer_toe() in the Streamlit app:
+    - France supply: day max(0, d-1)
+    - Spain supply : day max(0, d-2)
+    - supply_factor = 0.30 + 0.70 × (0.60 × fr + 0.40 × sp)  [floor 0.30]
+    - adjusted_score = raw_score × supply_factor
+    """
+    # Pre-compute per-day corridor averages
+    france_avg: list[float] = []
+    spain_avg:  list[float] = []
+    for day_idx in range(FORECAST_DAYS):
+        fr = [
+            r["days"][day_idx]["score"] for r in results
+            if SUPPLY_FRANCE_LAT_MIN <= r["latitude"] <= SUPPLY_FRANCE_LAT_MAX
+            and SUPPLY_CORRIDOR_LON_MIN <= r["longitude"] <= SUPPLY_CORRIDOR_LON_MAX
+        ]
+        sp = [
+            r["days"][day_idx]["score"] for r in results
+            if SUPPLY_SPAIN_LAT_MIN <= r["latitude"] <= SUPPLY_SPAIN_LAT_MAX
+            and SUPPLY_CORRIDOR_LON_MIN <= r["longitude"] <= SUPPLY_CORRIDOR_LON_MAX
+        ]
+        france_avg.append(sum(fr) / len(fr) if fr else DEFAULT_CORRIDOR_SCORE)
+        spain_avg.append(sum(sp) / len(sp) if sp else DEFAULT_CORRIDOR_SCORE)
+
+    for r in results:
+        lat = r["latitude"]
+        lon = r["longitude"]
+        if not (BENE_LAT_MIN <= lat <= BENE_LAT_MAX and BENE_LON_MIN <= lon <= BENE_LON_MAX):
+            continue
+        for day_idx, day_data in enumerate(r["days"]):
+            fr_day        = max(0, day_idx - SUPPLY_LAG_FRANCE)
+            sp_day        = max(0, day_idx - SUPPLY_LAG_SPAIN)
+            fr_supply     = france_avg[fr_day]
+            sp_supply     = spain_avg[sp_day]
+            supply_factor = round(
+                SUPPLY_FACTOR_FLOOR + SUPPLY_FACTOR_RANGE
+                * (SUPPLY_FRANCE_WEIGHT * fr_supply + SUPPLY_SPAIN_WEIGHT * sp_supply),
+                3,
+            )
+            raw_score     = day_data["score"]
+            adj_score     = round(min(1.0, max(0.0, raw_score * supply_factor)), 3)
+            day_data["score"]            = adj_score
+            day_data["class"]            = score_to_class(adj_score)
+            day_data["supply_factor"]    = supply_factor
+            day_data["supply_france"]    = round(fr_supply, 3)
+            day_data["supply_spain"]     = round(sp_supply, 3)
+    return results
+
+
 def process_point(point: dict) -> dict:
     """Fetch forecast and compute per-day scores for one grid point."""
     lat = point["latitude"]
@@ -420,6 +502,9 @@ def build_payload() -> dict:
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         results = list(executor.map(process_point, grid_points))
 
+    # Apply upstream supply chain correction for BE/NL grid points
+    results = apply_supply_chain_correction(results)
+
     # Per-day aggregate scores
     day_aggregates = []
     for day_idx in range(FORECAST_DAYS):
@@ -439,7 +524,7 @@ def build_payload() -> dict:
     return {
         "updated_at":    datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "ttl_minutes":   60,
-        "source":        "bmwt-github-actions-v2-tarifa-raster-6day",
+        "source":        "bmwt-github-actions-v3-tarifa-raster-6day-supply-chain",
         "raster": {
             "anchor_lat":    ANCHOR_LAT,
             "anchor_lon":    ANCHOR_LON,
