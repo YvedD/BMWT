@@ -392,13 +392,25 @@ def compute_migration_score(
 
 
 def score_to_class(score: float) -> str:
-    if score >= 0.75:
-        return "TOP"
+    if score >= 0.90:
+        return "Uitstekend"
+    elif score >= 0.80:
+        return "Zeer goed"
+    elif score >= 0.70:
+        return "Goed"
+    elif score >= 0.60:
+        return "Vrij goed"
     elif score >= 0.50:
-        return "GOED"
-    elif score >= 0.25:
-        return "MATIG"
-    return "LAAG"
+        return "Redelijk"
+    elif score >= 0.40:
+        return "Matig"
+    elif score >= 0.30:
+        return "Ongunstig"
+    elif score >= 0.20:
+        return "Slecht"
+    elif score >= 0.10:
+        return "Zeer slecht"
+    return "Verwaarloosbaar"
 
 
 def flight_altitude(wind_speed_kmh: float) -> str:

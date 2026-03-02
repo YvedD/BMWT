@@ -441,15 +441,27 @@ def migratie_bereken_score(weer):
 
 
 def migratie_score_naar_klasse(score):
-    """Vertaal migratiescore naar tekstlabel."""
-    if score >= 0.75:
-        return "TOP 🔴"
+    """Vertaal migratiescore naar tekstlabel (10 kleurschalen)."""
+    if score >= 0.90:
+        return "Uitstekend"
+    elif score >= 0.80:
+        return "Zeer goed"
+    elif score >= 0.70:
+        return "Goed"
+    elif score >= 0.60:
+        return "Vrij goed"
     elif score >= 0.50:
-        return "GOED 🟠"
-    elif score >= 0.25:
-        return "MATIG 🟡"
+        return "Redelijk"
+    elif score >= 0.40:
+        return "Matig"
+    elif score >= 0.30:
+        return "Ongunstig"
+    elif score >= 0.20:
+        return "Slecht"
+    elif score >= 0.10:
+        return "Zeer slecht"
     else:
-        return "LAAG 🔵"
+        return "Verwaarloosbaar"
 
 
 def migratie_score_naar_kleur(score):
@@ -1500,7 +1512,7 @@ with tabs[2]:
     Een hogere windkracht (< 7 Bf) duwt vogels naar **lagere hoogtes** en maakt ze beter waarneembaar.
     De cirkelgrootte geeft dit aan: 🔵 *groot* = vogels laag & zichtbaar · 🔵 *klein* = vogels hoog of trek beperkt.
 
-    **Kleurschaal:** 🔴 TOP ≥ 75 · 🟠 GOED 50–75 · 🟡 MATIG 25–50 · 🔵 LAAG < 25
+    **Kleurschaal (10 banden):** 🔴 Uitstekend ≥ 90 · Zeer goed 80–90 · Goed 70–80 · Vrij goed 60–70 · Redelijk 50–60 · Matig 40–50 · Ongunstig 30–40 · Slecht 20–30 · Zeer slecht 10–20 · 🔵 Verwaarloosbaar < 10
 
     *Gegevens gecacheerd voor 30 minuten. Klik op "Ververs nu" voor actuele data.*
     """)
@@ -1537,18 +1549,28 @@ with tabs[2]:
     # Gedeelde kleurlegende (eenmalig boven alle 6 kaarten)
     st.markdown(
         """
-        <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;
-                    margin-bottom:8px;font-size:14px;">
-          <span><span style="background:#ff0000;padding:2px 12px;border-radius:4px;
-                color:white;">●</span>&nbsp;TOP ≥ 75</span>
-          <span><span style="background:#ffaa00;padding:2px 12px;border-radius:4px;
-                color:white;">●</span>&nbsp;GOED 50–75</span>
-          <span><span style="background:#aaff00;padding:2px 12px;border-radius:4px;
-                color:black;">●</span>&nbsp;MATIG 25–50</span>
-          <span><span style="background:#00ffff;padding:2px 12px;border-radius:4px;
-                color:black;">●</span>&nbsp;LAAG 10–25</span>
-          <span><span style="background:#0000ff;padding:2px 12px;border-radius:4px;
-                color:white;">●</span>&nbsp;ONGUNSTIG &lt; 10</span>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+                    margin-bottom:8px;font-size:13px;">
+          <span><span style="background:#ff0000;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Uitstekend ≥ 90</span>
+          <span><span style="background:#ff6500;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Zeer goed 80–90</span>
+          <span><span style="background:#ffcb00;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Goed 70–80</span>
+          <span><span style="background:#cbff00;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Vrij goed 60–70</span>
+          <span><span style="background:#00ff00;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Redelijk 50–60</span>
+          <span><span style="background:#00ff66;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Matig 40–50</span>
+          <span><span style="background:#00ffcb;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Ongunstig 30–40</span>
+          <span><span style="background:#00cbff;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Slecht 20–30</span>
+          <span><span style="background:#0066ff;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Zeer slecht 10–20</span>
+          <span><span style="background:#0000ff;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Verwaarloosbaar &lt; 10</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1570,22 +1592,47 @@ with tabs[2]:
             vh_meest = max(vh_teller, key=lambda k: vh_teller[k])
         else:
             vh_meest = "?"
+
+        # Geselecteerd uur voor deze dag (via tijdlijn-klik); None = daggemiddelde
+        sel_uur_key = f"selected_uur_dag_{dag_idx}"
+        if sel_uur_key not in st.session_state:
+            st.session_state[sel_uur_key] = None
+        selected_uur = st.session_state[sel_uur_key]
+
+        uur_label = f" · uur {selected_uur:02d}:00 UTC" if selected_uur is not None else ""
         st.markdown(
-            f"### {dag_titel} — {dag_label}  ·  gem. score: {gem_score}/100  ·  vlieghoogte: {vh_meest}"
+            f"### {dag_titel} — {dag_label}  ·  gem. score: {gem_score}/100  ·  vlieghoogte: {vh_meest}{uur_label}"
         )
 
         m_dag = folium.Map(location=[KAART_CENTER_LAT, KAART_CENTER_LON], zoom_start=5, tiles="CartoDB positron")
 
         for punt in raster_dag:
-            score_pct    = int(punt["score"] * 100)
-            kleur        = punt["kleur"]
+            # Gebruik uurlijkse score wanneer een uur geselecteerd is op de tijdslijn
+            if selected_uur is not None:
+                uurscores = punt.get("uurscores", [])
+                if 0 <= selected_uur < len(uurscores):
+                    uur_score = uurscores[selected_uur]
+                else:
+                    uur_score = punt["score"]
+                score_pct = int(uur_score * 100)
+                kleur     = migratie_score_naar_kleur(uur_score)
+                klasse_lbl = migratie_score_naar_klasse(uur_score)
+            else:
+                score_pct  = int(punt["score"] * 100)
+                kleur      = punt["kleur"]
+                klasse_lbl = punt["klasse"]
             radius       = punt.get("marker_radius", 7)
             vh_lbl       = punt.get("vlieghoogte", "?")
             vh_tip       = punt.get("vlieghoogte_tip", "")
+            score_info   = (
+                f"Migratiecode: {score_pct}/100 (uur {selected_uur:02d}:00 UTC)"
+                if selected_uur is not None
+                else f"Migratiecode: {score_pct}/100 (daggemiddelde)"
+            )
             popup_html = (
                 f"<div style='font-size:13px;min-width:210px;'>"
-                f"<b>Migratiecode: {score_pct}/100</b><br>"
-                f"<b>Klasse: {punt['klasse']}</b><br>"
+                f"<b>{score_info}</b><br>"
+                f"<b>Klasse: {klasse_lbl}</b><br>"
                 f"📍 {punt['latitude']}°N, {punt['longitude']}°E<br>"
                 f"🧭 Wind: {punt['wind_richting']} {punt['wind_kracht']} Bf<br>"
                 f"🌡️ Temp: {punt['temperatuur']} °C<br>"
@@ -1607,7 +1654,7 @@ with tabs[2]:
                 + "</div>"
             )
             tooltip_tekst = (
-                f"{dag_label} | {score_pct}/100 ({punt['klasse']}) "
+                f"{dag_label} | {score_pct}/100 ({klasse_lbl}) "
                 f"| {punt['latitude']}°N {punt['longitude']}°E "
                 f"| {punt['wind_richting']} {punt['wind_kracht']} Bf "
                 f"| {punt['druk']} hPa | ✈️ {vh_lbl}"
@@ -1670,28 +1717,56 @@ with tabs[2]:
             .mark_rule(color="#888888", strokeDash=[4, 4])
             .encode(y=alt.Y("y:Q", scale=alt.Scale(domain=[0, 100])))
         )
+        sel_naam = f"uur_sel_d{dag_idx}"
+        uur_selectie = alt.selection_point(name=sel_naam, fields=["uur"], on="click", clear="dblclick")
         tijdlijn = (
             alt.Chart(uur_df, title=chart_titel)
             .mark_bar(size=16)
             .encode(
-                x=alt.X("uur:O", title="Uur (UTC)", sort=None),
+                x=alt.X("uur:O", title="Uur (UTC) — klik om kaart te hertekenen · dubbelklik om te resetten", sort=None),
                 y=alt.Y("score:Q", scale=alt.Scale(domain=[0, 100]), title="Migratie-Score (0–100)"),
                 color=alt.Color(
                     "score:Q",
                     scale=alt.Scale(
-                        domain=[0, 25, 50, 75, 100],
-                        range=["#0000ff", "#00aaff", "#aaff00", "#ffaa00", "#ff0000"],
+                        domain=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+                        range=[
+                            "#0000ff", "#0066ff", "#00cbff", "#00ffcb",
+                            "#00ff66", "#00ff00", "#65ff00", "#cbff00",
+                            "#ffcb00", "#ff6500", "#ff0000",
+                        ],
                     ),
                     legend=None,
                 ),
+                opacity=alt.condition(uur_selectie, alt.value(1.0), alt.value(0.6)),
                 tooltip=[
                     alt.Tooltip("uur:O", title="Uur"),
                     alt.Tooltip("score:Q", title="Migratiescore (0–100)"),
                 ],
             )
-            .properties(height=250)
+            .add_params(uur_selectie)
+            .properties(height=350)
         )
-        st.altair_chart(tijdlijn + regel, use_container_width=True)
+        chart_result = st.altair_chart(
+            tijdlijn + regel, use_container_width=True,
+            on_select="rerun", key=f"tijdlijn_{dag_idx}",
+        )
+
+        # Verwerk uur-selectie: update session state en herteken kaart
+        nieuw_uur = None
+        try:
+            sel_data = (chart_result.selection or {}).get(sel_naam, {})
+            uur_vals = sel_data.get("uur", [])
+            if uur_vals:
+                uur_str = str(uur_vals[0])
+                nieuw_uur = int(uur_str.split(":")[0])
+                if not (0 <= nieuw_uur <= 23):
+                    nieuw_uur = None
+        except (ValueError, IndexError, TypeError, AttributeError):
+            pass
+        if nieuw_uur != st.session_state.get(sel_uur_key):
+            st.session_state[sel_uur_key] = nieuw_uur
+            st.rerun()
+
         st.divider()
 
     # Corridoranalyse voor BE / NL / DE
