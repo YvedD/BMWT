@@ -257,6 +257,15 @@ BENE_WIND_SPEED_3BF = 12.0    # Bf 3 ondergrens (= optimum ondergrens)
 BENE_WIND_SPEED_5BF = 38.0    # Bf 5 bovengrens (= optimum bovengrens)
 BENE_WIND_SPEED_7BF = 50.0    # Bf 7 ondergrens (= trek grotendeels afgeremd)
 
+# Windrichting-correctiefactoren
+# West-component strafterm: hoe meer West-component, hoe lager de score
+WIND_WEST_PENALTY   = 0.5     # strafmultiplicator voor de West-component
+# Zeemigratiebonus bij sterke NW/W wind (>6 Bf): vogels worden oostwaarts geblazen
+WIND_SEA_BONUS      = 0.4     # bonusmultiplicator voor de West-component bij >6 Bf
+# Richtingsbereik (graden) waarbinnen de zeemigratiebonus geldt (ZW t/m NNW)
+WIND_NW_W_DIR_MIN   = 225.0   # ZW (ondergrens)
+WIND_NW_W_DIR_MAX   = 330.0   # NNW (bovengrens)
+
 # ---------------------------------------------------------------------------
 # Aanvoercorridor: migratieaanvoer vanuit het zuiden naar BE/NL
 # Wetenschappelijke basis: migratie is een 'pijplijn'. Vogels passeren eerst
@@ -367,11 +376,14 @@ def migratie_bereken_score(weer):
     Bereken migratiescore (0.0 = extreem ongunstig, 1.0 = extreem gunstig).
 
     Gewichten (conform AI-Predictor.md):
-      - Windrichting  40 %  (zuidenwind = ideale rugwind voor noordwaartse trek)
+      - Windrichting  40 %  (zuidenwind = ideale rugwind; West-component verlaagt score)
       - Neerslag      25 %  (droog = gunstig)
       - Windkracht    15 %  (matige wind = optimaal)
       - Zicht         10 %  (helder = gunstig)
       - Temperatuur   10 %  (8–20 °C = optimaal)
+
+    Uitzondering windrichting: sterke NW/W wind (>6 Bf) levert geweldige zeemigratie
+    op; in dat geval vervalt de West-straf en geldt een zeemigratiebonus.
     """
     if not weer:
         return 0.5
@@ -383,9 +395,18 @@ def migratie_bereken_score(weer):
     zicht         = float(weer.get("visibility", 10000))
 
     # Windrichting: zuidenwind (180°) = ideale rugwind voor noordwaartse trek
-    # cos(0°) = 1  →  (1-1)/2 = 0 = slecht (noordenwind = tegenstander)
-    # cos(180°) = -1  →  (1+1)/2 = 1 = goed (zuidenwind = rugwind)
-    wind_richting_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
+    #   Zuid-component verhoogt de score; West-component verlaagt de score.
+    #   Uitzondering: sterke NW/W wind (>6 Bf) → geweldige migratie over zee
+    #     (vogels worden oostwaarts geblazen over de Noordzee).
+    south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
+    west_component = max(0.0, -math.sin(math.radians(wind_richting)))
+    is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
+    if is_nw_w_sterk:
+        # Sterke NW/W: West-straf vervalt; West-component levert zeemigratiebonus op
+        wind_richting_score = min(1.0, south_score + west_component * WIND_SEA_BONUS)
+    else:
+        # Meer West-component → lagere score; meer Zuid-component → hogere score
+        wind_richting_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
 
     # Windkracht: optimaal 5–25 km/h
     if wind_kracht <= 5:
@@ -662,6 +683,13 @@ def migratie_bereken_score_uitgebreid(
        5 % grenslaagdikte (BLH > 1500 m = goede thermiek voor zwevers & roofvogels)
        5 % CAPE           (convectieve beschikbare energie = thermiekindicator)
 
+    Windrichtings-correctie (algemeen en BE/NL):
+      Zuid-component (wind uit Z, ZZO, ZZW …) verhoogt de score.
+      West-component (wind uit W, ZW, NW …) verlaagt de score.
+      Uitzondering: heel sterke NW/W wind (>6 Bf) levert geweldige zeemigratie
+        op (vogels worden oostwaarts geblazen over de Noordzee), waardoor de
+        West-straf vervalt en een zeemigratiebonus wordt toegekend.
+
     Regionale correctie BE/NL (BENE_LAT/LON_MIN/MAX):
       De beste trekdagen voor België en Nederland worden bepaald door ZO-wind
       (≈ 135°, 3–5 Bf). Vogels worden dan vanuit centraal-Frankrijk naar de
@@ -730,9 +758,27 @@ def migratie_bereken_score_uitgebreid(
             )
         else:
             wind_kracht_score = max(0.0, 0.3 - (wind_kracht - BENE_WIND_SPEED_7BF) / 30.0)
+
+        # --- BE/NL West-component correctie ---
+        # West-component verlaagt de score; uitzondering: sterke NW/W (>6 Bf)
+        # → vogels worden oostwaarts geblazen over de Noordzee (zeemigratie).
+        west_component = max(0.0, -math.sin(math.radians(wind_richting)))
+        is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
+        if is_nw_w_sterk:
+            wind_richting_score = min(1.0, wind_richting_score + west_component * WIND_SEA_BONUS)
+        else:
+            wind_richting_score = max(0.0, wind_richting_score - WIND_WEST_PENALTY * west_component)
     else:
-        # Algemeen: Z-wind (180°) = ideale rugwind; N (0°/360°) = tegenwind
-        wind_richting_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
+        # Algemeen: Z-wind (180°) = ideale rugwind; N (0°/360°) = tegenwind.
+        # Zuid-component verhoogt de score; West-component verlaagt de score.
+        # Uitzondering: sterke NW/W wind (>6 Bf) → geweldige migratie over zee.
+        south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
+        west_component = max(0.0, -math.sin(math.radians(wind_richting)))
+        is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
+        if is_nw_w_sterk:
+            wind_richting_score = min(1.0, south_score + west_component * WIND_SEA_BONUS)
+        else:
+            wind_richting_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
 
         # Algemeen: 5–25 km/h = optimaal
         if wind_kracht <= 5:
