@@ -1712,11 +1712,6 @@ with tabs[2]:
             "uur":   [f"{u:02d}:00" for u in range(24)],
             "score": [round(s * 100) for s in uurscores_dag],
         })
-        regel = (
-            alt.Chart(pd.DataFrame({"y": [50]}))
-            .mark_rule(color="#888888", strokeDash=[4, 4])
-            .encode(y=alt.Y("y:Q", scale=alt.Scale(domain=[0, 100])))
-        )
         sel_naam = f"uur_sel_d{dag_idx}"
         uur_selectie = alt.selection_point(name=sel_naam, fields=["uur"], on="click", clear="dblclick")
         tijdlijn = (
@@ -1747,7 +1742,7 @@ with tabs[2]:
             .properties(height=350)
         )
         chart_result = st.altair_chart(
-            tijdlijn + regel, use_container_width=True,
+            tijdlijn, use_container_width=True,
             on_select="rerun", key=f"tijdlijn_{dag_idx}",
         )
 
