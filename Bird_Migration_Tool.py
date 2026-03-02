@@ -1675,7 +1675,7 @@ with tabs[2]:
             .mark_bar(size=16)
             .encode(
                 x=alt.X("uur:O", title="Uur (UTC)", sort=None),
-                y=alt.Y("score:Q", scale=alt.Scale(domain=[0, 100]), title="Score (0–100)"),
+                y=alt.Y("score:Q", scale=alt.Scale(domain=[0, 100]), title="Migratie-Score (0–100)"),
                 color=alt.Color(
                     "score:Q",
                     scale=alt.Scale(
@@ -1788,4 +1788,5 @@ with tabs[6]:
            Uiteraard kan je in deze context ook terecht op de webpagina van Trektellen.nl, echter kan je geen gegevens wijzigen op deze site, het weergeven van trektellen.nl is hier puur informatief bedoeld.
         7. Voor meldingen, opmerkingen en vragen kan je terecht via mail : ydsdsy@gmail.com""")
         # Een mailto-link toevoegen
+
 
