@@ -74,6 +74,15 @@ BENE_WIND_SPEED_3BF = 12.0    # Bf 3 lower bound (optimal range start)
 BENE_WIND_SPEED_5BF = 38.0    # Bf 5 upper bound (optimal range end)
 BENE_WIND_SPEED_7BF = 50.0    # Bf 7 lower bound (migration suppressed)
 
+# Wind direction correction factors
+# West-component penalty: the more westerly the wind, the lower the score
+WIND_WEST_PENALTY   = 0.5     # penalty multiplier for the west component
+# Sea-migration bonus for strong NW/W wind (>6 Bf): birds blown eastward over the North Sea
+WIND_SEA_BONUS      = 0.4     # bonus multiplier for the west component when >6 Bf
+# Direction range (degrees) in which the sea-migration bonus applies (SW to NNW)
+WIND_NW_W_DIR_MIN   = 225.0   # SW (lower bound)
+WIND_NW_W_DIR_MAX   = 330.0   # NNW (upper bound)
+
 # ---------------------------------------------------------------------------
 # Supply corridor: upstream migration availability from the south
 # Science: migration is a pipeline — birds must first pass through Spain
@@ -230,6 +239,13 @@ def compute_migration_score(
        5 % boundary-layer height (BLH > 1500 m = good thermals for soaring birds)
        5 % CAPE               (convective energy — thermal indicator)
 
+    Wind direction correction (general and BE/NL):
+      South component (wind from S, SSE, SSW …) raises the score.
+      West component (wind from W, SW, NW …) lowers the score.
+      Exception: very strong NW/W wind (>6 Bf) triggers excellent sea migration
+        (birds blown eastward over the North Sea); west penalty is replaced by a
+        sea-migration bonus.
+
     BE/NL regional correction (BENE_LAT/LON_MIN/MAX):
       SE wind (≈ 135°, 3–5 Bf) is optimal for Belgium/Netherlands — birds are
       pushed from central France toward the North Sea coast.
@@ -283,9 +299,27 @@ def compute_migration_score(
             )
         else:
             wind_speed_score = max(0.0, 0.3 - (wind_speed - BENE_WIND_SPEED_7BF) / 30.0)
+
+        # BE/NL west-component correction:
+        # West component lowers score; exception: strong NW/W (>6 Bf) →
+        # excellent sea migration (birds blown eastward over the North Sea).
+        west_component = max(0.0, -math.sin(math.radians(wind_dir)))
+        is_nw_w_strong = (WIND_NW_W_DIR_MIN <= wind_dir <= WIND_NW_W_DIR_MAX) and (wind_speed >= BENE_WIND_SPEED_7BF)
+        if is_nw_w_strong:
+            wind_dir_score = clamp(wind_dir_score + west_component * WIND_SEA_BONUS, 0.0, 1.0)
+        else:
+            wind_dir_score = max(0.0, wind_dir_score - WIND_WEST_PENALTY * west_component)
     else:
-        # General: south (180°) = tailwind → 1.0; north (0°/360°) → 0.0
-        wind_dir_score = (1.0 - math.cos(math.radians(wind_dir))) / 2.0
+        # General: south (180°) = tailwind → 1.0; north (0°/360°) → 0.0.
+        # South component raises score; west component lowers score.
+        # Exception: strong NW/W wind (>6 Bf) → great sea migration (no west penalty).
+        south_score = (1.0 - math.cos(math.radians(wind_dir))) / 2.0
+        west_component = max(0.0, -math.sin(math.radians(wind_dir)))
+        is_nw_w_strong = (WIND_NW_W_DIR_MIN <= wind_dir <= WIND_NW_W_DIR_MAX) and (wind_speed >= BENE_WIND_SPEED_7BF)
+        if is_nw_w_strong:
+            wind_dir_score = clamp(south_score + west_component * WIND_SEA_BONUS, 0.0, 1.0)
+        else:
+            wind_dir_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
         # Optimal 5–25 km/h
         if wind_speed <= 5:
             wind_speed_score = wind_speed / 5.0
