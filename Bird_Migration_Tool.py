@@ -957,6 +957,7 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
 
             # --- Uurlijkse scores (alle 24 uur) voor tijdlijnvisualisatie en daggemiddelde ---
             uurscores: list[float] = []
+            uurweer: list = []  # uurlijkse weerwaarden voor popup (raw floats)
             for uur in range(24):
                 uur_idx = dag_idx * 24 + uur
                 if hourly:
@@ -974,8 +975,17 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
                     uurscores.append(migratie_bereken_score_uitgebreid(
                         uur_weer, lat=punt["latitude"], lon=punt["longitude"]
                     ))
+                    uurweer.append({
+                        "wd": float(uur_weer["wind_direction_10m"]),
+                        "ws": float(uur_weer["wind_speed_10m"]),
+                        "t":  float(uur_weer["temperature_2m"]),
+                        "p":  float(uur_weer["precipitation"]),
+                        "pr": float(uur_weer["pressure_msl"]),
+                        "b":  float(uur_weer["boundary_layer_height"]),
+                    })
                 else:
                     uurscores.append(0.5)
+                    uurweer.append(None)
             uurscores_per_dag.append(uurscores)
 
             # Dagelijkse score = gemiddelde over alle 24 uur (vroeger: uitsluitend 12:00 UTC)
@@ -1041,6 +1051,7 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
                 "marker_radius":    marker_radius,
                 "be_nl_zone":       in_bene,
                 "uurscores":        uurscores,
+                "uurweer":          uurweer,
             })
         return dag_punten, uurscores_per_dag
 
@@ -1593,11 +1604,14 @@ with tabs[2]:
         else:
             vh_meest = "?"
 
-        # Geselecteerd uur voor deze dag (via tijdlijn-klik); None = daggemiddelde
-        sel_uur_key = f"selected_uur_dag_{dag_idx}"
-        if sel_uur_key not in st.session_state:
-            st.session_state[sel_uur_key] = None
-        selected_uur = st.session_state[sel_uur_key]
+        # Uur-keuze dropdown boven de kaart
+        _uur_opties = ["Daggemiddelde (24u)"] + [f"{h:02d}:00 uur" for h in range(24)]
+        _uur_keuze = st.selectbox(
+            "🕐 Toon uur (UTC):",
+            _uur_opties,
+            key=f"uur_keuze_{dag_idx}",
+        )
+        selected_uur = None if _uur_keuze == _uur_opties[0] else int(_uur_keuze.split(":")[0])
 
         uur_label = f" · uur {selected_uur:02d}:00 UTC" if selected_uur is not None else ""
         st.markdown(
@@ -1607,41 +1621,66 @@ with tabs[2]:
         m_dag = folium.Map(location=[KAART_CENTER_LAT, KAART_CENTER_LON], zoom_start=5, tiles="CartoDB positron")
 
         for punt in raster_dag:
-            # Gebruik uurlijkse score wanneer een uur geselecteerd is op de tijdslijn
+            # Gebruik uurlijkse score wanneer een uur geselecteerd is
             if selected_uur is not None:
-                uurscores = punt.get("uurscores", [])
-                if 0 <= selected_uur < len(uurscores):
-                    uur_score = uurscores[selected_uur]
+                _uurscores = punt.get("uurscores", [])
+                if 0 <= selected_uur < len(_uurscores):
+                    uur_score = _uurscores[selected_uur]
                 else:
                     uur_score = punt["score"]
-                score_pct = int(uur_score * 100)
-                kleur     = migratie_score_naar_kleur(uur_score)
+                score_pct  = int(uur_score * 100)
+                kleur      = migratie_score_naar_kleur(uur_score)
                 klasse_lbl = migratie_score_naar_klasse(uur_score)
             else:
                 score_pct  = int(punt["score"] * 100)
                 kleur      = punt["kleur"]
                 klasse_lbl = punt["klasse"]
-            radius       = punt.get("marker_radius", 7)
-            vh_lbl       = punt.get("vlieghoogte", "?")
-            vh_tip       = punt.get("vlieghoogte_tip", "")
+
+            # Weerwaarden voor popup: daggemiddelde als standaard, uurspecifiek indien geselecteerd
+            disp_wind_richting = punt["wind_richting"]
+            disp_wind_kracht   = punt["wind_kracht"]
+            disp_temp          = punt["temperatuur"]
+            disp_neerslag      = punt["neerslag"]
+            disp_druk          = punt["druk"]
+            disp_blh           = punt["blh"]
+            vh_lbl             = punt.get("vlieghoogte", "?")
+            vh_tip             = punt.get("vlieghoogte_tip", "")
+            radius             = punt.get("marker_radius", 7)
+            if selected_uur is not None:
+                _uurweer = punt.get("uurweer") or []
+                if 0 <= selected_uur < len(_uurweer) and _uurweer[selected_uur]:
+                    _hw = _uurweer[selected_uur]
+                    disp_wind_richting = graden_naar_windrichting(_hw["wd"])
+                    disp_wind_kracht   = kmh_naar_beaufort(_hw["ws"])
+                    disp_temp          = f"{_hw['t']:.1f}"
+                    disp_neerslag      = f"{_hw['p']:.1f}"
+                    disp_druk          = f"{_hw['pr']:.0f}"
+                    disp_blh           = f"{int(_hw['b'])}"
+                    vh_lbl, vh_tip, radius = migratie_vlieghoogte(_hw["ws"])
+
             score_info   = (
                 f"Migratiecode: {score_pct}/100 (uur {selected_uur:02d}:00 UTC)"
                 if selected_uur is not None
                 else f"Migratiecode: {score_pct}/100 (daggemiddelde)"
+            )
+            weerdisplay_note = (
+                f"Weerdisplay: {selected_uur:02d}:00 UTC"
+                if selected_uur is not None
+                else "Weerdisplay: 12:00 UTC · Score: 24-uurs gemiddelde"
             )
             popup_html = (
                 f"<div style='font-size:13px;min-width:210px;'>"
                 f"<b>{score_info}</b><br>"
                 f"<b>Klasse: {klasse_lbl}</b><br>"
                 f"📍 {punt['latitude']}°N, {punt['longitude']}°E<br>"
-                f"🧭 Wind: {punt['wind_richting']} {punt['wind_kracht']} Bf<br>"
-                f"🌡️ Temp: {punt['temperatuur']} °C<br>"
-                f"🌧️ Neerslag: {punt['neerslag']} mm<br>"
-                f"📊 Druk: {punt['druk']} hPa<br>"
-                f"🌀 BLH: {punt['blh']} m<br>"
+                f"🧭 Wind: {disp_wind_richting} {disp_wind_kracht} Bf<br>"
+                f"🌡️ Temp: {disp_temp} °C<br>"
+                f"🌧️ Neerslag: {disp_neerslag} mm<br>"
+                f"📊 Druk: {disp_druk} hPa<br>"
+                f"🌀 BLH: {disp_blh} m<br>"
                 f"<b>🦅 Vlieghoogte: {vh_lbl}</b><br>"
                 f"<i style='font-size:11px;color:#555'>{vh_tip}</i>"
-                f"<br><i style='font-size:10px;color:#888'>Weerdisplay: 12:00 UTC · Score: 24-uurs gemiddelde</i>"
+                f"<br><i style='font-size:10px;color:#888'>{weerdisplay_note}</i>"
                 + (
                     f"<br><span style='color:#c47000;font-size:11px;'>"
                     f"🌟 BE/NL zone: ZO-wind (3–5 Bf) = optimaal</span>"
@@ -1656,8 +1695,8 @@ with tabs[2]:
             tooltip_tekst = (
                 f"{dag_label} | {score_pct}/100 ({klasse_lbl}) "
                 f"| {punt['latitude']}°N {punt['longitude']}°E "
-                f"| {punt['wind_richting']} {punt['wind_kracht']} Bf "
-                f"| {punt['druk']} hPa | ✈️ {vh_lbl}"
+                f"| {disp_wind_richting} {disp_wind_kracht} Bf "
+                f"| {disp_druk} hPa | ✈️ {vh_lbl}"
             )
             folium.CircleMarker(
                 location=[punt["latitude"], punt["longitude"]],
@@ -1712,13 +1751,15 @@ with tabs[2]:
             "uur":   [f"{u:02d}:00" for u in range(24)],
             "score": [round(s * 100) for s in uurscores_dag],
         })
-        sel_naam = f"uur_sel_d{dag_idx}"
-        uur_selectie = alt.selection_point(name=sel_naam, fields=["uur"], on="click", clear="dblclick")
+        # Markeer het geselecteerde uur in de grafiek
+        uur_df["geselecteerd"] = [
+            1.0 if u == selected_uur else 0.55 for u in range(24)
+        ]
         tijdlijn = (
             alt.Chart(uur_df, title=chart_titel)
             .mark_bar(size=16)
             .encode(
-                x=alt.X("uur:O", title="Uur (UTC) — klik om kaart te hertekenen · dubbelklik om te resetten", sort=None),
+                x=alt.X("uur:O", title="Uur (UTC)", sort=None),
                 y=alt.Y("score:Q", scale=alt.Scale(domain=[0, 100]), title="Migratie-Score (0–100)"),
                 color=alt.Color(
                     "score:Q",
@@ -1732,35 +1773,22 @@ with tabs[2]:
                     ),
                     legend=None,
                 ),
-                opacity=alt.condition(uur_selectie, alt.value(1.0), alt.value(0.6)),
+                opacity=alt.Opacity(
+                    "geselecteerd:Q",
+                    scale=alt.Scale(domain=[0.55, 1.0], range=[0.55, 1.0]),
+                    legend=None,
+                ),
                 tooltip=[
                     alt.Tooltip("uur:O", title="Uur"),
                     alt.Tooltip("score:Q", title="Migratiescore (0–100)"),
                 ],
             )
-            .add_params(uur_selectie)
             .properties(height=350)
         )
-        chart_result = st.altair_chart(
+        st.altair_chart(
             tijdlijn, use_container_width=True,
-            on_select="rerun", key=f"tijdlijn_{dag_idx}",
+            key=f"tijdlijn_{dag_idx}",
         )
-
-        # Verwerk uur-selectie: update session state en herteken kaart
-        nieuw_uur = None
-        try:
-            sel_data = (chart_result.selection or {}).get(sel_naam, {})
-            uur_vals = sel_data.get("uur", [])
-            if uur_vals:
-                uur_str = str(uur_vals[0])
-                nieuw_uur = int(uur_str.split(":")[0])
-                if not (0 <= nieuw_uur <= 23):
-                    nieuw_uur = None
-        except (ValueError, IndexError, TypeError, AttributeError):
-            pass
-        if nieuw_uur != st.session_state.get(sel_uur_key):
-            st.session_state[sel_uur_key] = nieuw_uur
-            st.rerun()
 
         st.divider()
 
