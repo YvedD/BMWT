@@ -13,7 +13,7 @@ import math
 import colorsys
 import concurrent.futures
 import threading
-from geopy.exc import GeocoderUnavailable
+from geopy.exc import GeocoderUnavailable, GeocoderRateLimited
 import streamlit.components.v1 as components
 from timezonefinder import TimezoneFinder
 from soorten_geluiden import iframe_data
@@ -119,9 +119,9 @@ def toon_geolocatie_op_kaart(locatie):
         else:
             st.error(f"De locatie {locatie} kan niet gevonden worden.")
             return None, None, None
-    except GeocoderUnavailable:
-        # Als Nominatim niet beschikbaar is, probeer OpenCage
-        st.warning("Nominatim is niet beschikbaar, overschakelen naar OpenCage...")
+    except (GeocoderUnavailable, GeocoderRateLimited):
+        # Als Nominatim niet beschikbaar is of rate-limiteert, probeer OpenCage
+        st.warning("Nominatim is tijdelijk niet beschikbaar of rate-limiteert, overschakelen naar OpenCage...")
         
         geolocator_opencage = OpenCage(api_key="b1f4bbd95b90415da9c04e261fe331d7")
         try:
@@ -131,7 +131,7 @@ def toon_geolocatie_op_kaart(locatie):
             else:
                 st.error(f"De locatie {locatie} kan niet gevonden worden in OpenCage.")
                 return None, None, None
-        except GeocoderUnavailable:
+        except (GeocoderUnavailable, GeocoderRateLimited):
             st.error("OpenCage is ook niet beschikbaar. Probeer het later opnieuw.")
             return None, None, None
         except Exception as e:
