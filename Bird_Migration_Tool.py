@@ -13,7 +13,7 @@ import math
 import colorsys
 import concurrent.futures
 import threading
-from geopy.exc import GeocoderUnavailable
+from geopy.exc import GeocoderUnavailable, GeocoderRateLimited
 import streamlit.components.v1 as components
 from timezonefinder import TimezoneFinder
 from soorten_geluiden import iframe_data
@@ -119,9 +119,9 @@ def toon_geolocatie_op_kaart(locatie):
         else:
             st.error(f"De locatie {locatie} kan niet gevonden worden.")
             return None, None, None
-    except GeocoderUnavailable:
-        # Als Nominatim niet beschikbaar is, probeer OpenCage
-        st.warning("Nominatim is niet beschikbaar, overschakelen naar OpenCage...")
+    except (GeocoderUnavailable, GeocoderRateLimited):
+        # Als Nominatim niet beschikbaar is of rate-limiteert, probeer OpenCage
+        st.warning("Nominatim is tijdelijk niet beschikbaar of rate-limiteert, overschakelen naar OpenCage...")
         
         geolocator_opencage = OpenCage(api_key="b1f4bbd95b90415da9c04e261fe331d7")
         try:
@@ -131,7 +131,7 @@ def toon_geolocatie_op_kaart(locatie):
             else:
                 st.error(f"De locatie {locatie} kan niet gevonden worden in OpenCage.")
                 return None, None, None
-        except GeocoderUnavailable:
+        except (GeocoderUnavailable, GeocoderRateLimited):
             st.error("OpenCage is ook niet beschikbaar. Probeer het later opnieuw.")
             return None, None, None
         except Exception as e:
@@ -1081,35 +1081,35 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
 
 
 # Controleer wijzigingen in invoer (gebruik session_state)
-if "last_locatie" not in st.session_state:
-    st.session_state.last_locatie = default_locatie
-    st.session_state.last_datum = default_datum
-    st.session_state.last_hours = default_hours
+if "weer_last_locatie" not in st.session_state:
+    st.session_state.weer_last_locatie = default_locatie
+    st.session_state.weer_last_datum = default_datum
+    st.session_state.weer_last_hours = default_hours
 
 # Update alleen bij wijziging van locatie, datum of uren
 if (
-        locatie_keuze != st.session_state.last_locatie
-        or geselecteerde_datum != st.session_state.last_datum
-        or default_hours != st.session_state.last_hours
+        locatie_keuze != st.session_state.weer_last_locatie
+        or geselecteerde_datum != st.session_state.weer_last_datum
+        or default_hours != st.session_state.weer_last_hours
 ):
     lat, lon, adres = toon_geolocatie_op_kaart(f"{locatie_keuze}, {land_keuze}")
     if lat and lon:
         gps_format = f"{round(lat, 2)}°{'N' if lat >= 0 else 'S'} {round(lon, 2)}°{'E' if lon >= 0 else 'W'}"
         weather_data = get_weather_data_historical(lat, lon, geselecteerde_datum)
-        st.session_state.last_locatie = locatie_keuze
-        st.session_state.last_datum = geselecteerde_datum
-        st.session_state.last_hours = default_hours
-        st.session_state.weather_data = weather_data
-        st.session_state.lat = lat
-        st.session_state.lon = lon
-        st.session_state.adres = adres
-        st.session_state.gps_format = gps_format
+        st.session_state.weer_last_locatie = locatie_keuze
+        st.session_state.weer_last_datum = geselecteerde_datum
+        st.session_state.weer_last_hours = default_hours
+        st.session_state.weer_data = weather_data
+        st.session_state.weer_lat = lat
+        st.session_state.weer_lon = lon
+        st.session_state.weer_adres = adres
+        st.session_state.weer_gps_format = gps_format
 
 # Toon GPS-gegevens en tijden in de sidebar
-if "gps_format" in st.session_state:
+if "weer_gps_format" in st.session_state:
 
     # Splits de string op basis van de komma's
-    adresdelen = st.session_state.adres.split(',')
+    adresdelen = st.session_state.weer_adres.split(',')
 
     # Haal de eerste (stad) en de laatste (land) delen van het adres
     stad = adresdelen[0].strip()  # Bruges
@@ -1117,8 +1117,8 @@ if "gps_format" in st.session_state:
 
 
     # Haal zonsopgang- en zonsondergangtijden op
-    if "weather_data" in st.session_state:
-        weather_data = st.session_state.weather_data
+    if "weer_data" in st.session_state:
+        weather_data = st.session_state.weer_data
         sunrise, sunset = haal_zonsopgang_en_zonsondergang(weather_data)
 
         if sunrise and sunset:
@@ -1137,13 +1137,13 @@ if "gps_format" in st.session_state:
                 """,
                 unsafe_allow_html=True,
             )
-        if "lat" in st.session_state and "lon" in st.session_state:
+        if "weer_lat" in st.session_state and "weer_lon" in st.session_state:
             # Maak een nieuwe kaart met de opgegeven coördinaten
-            m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=9)
+            m = folium.Map(location=[st.session_state.weer_lat, st.session_state.weer_lon], zoom_start=9)
 
             # Maak een marker met een groene kleur en een rood 'binocular' icoon
             #marker = folium.Marker(
-            #    location=[st.session_state.lat, st.session_state.lon],
+            #    location=[st.session_state.weer_lat, st.session_state.weer_lon],
             #    icon=Icon(icon="fa-binoculars", prefix='fa', color='green', icon_color='white')
             #    # Font Awesome 'binoculars' icoon
             # Gebruik een aangepaste afbeelding als icoon
@@ -1152,7 +1152,7 @@ if "gps_format" in st.session_state:
 
             # Voeg de marker toe aan de kaart
             marker1 = folium.Marker(
-                location=[st.session_state.lat, st.session_state.lon],
+                location=[st.session_state.weer_lat, st.session_state.weer_lon],
                 icon=eagle_icon, icon_anchor=(12.5, 38),
                 popup=locatie_keuze
             ).add_to(m)
@@ -1195,8 +1195,8 @@ tabs = st.tabs(["Weergegevens", "Voorspellingen", "🦅 Migratie Raster", "CROW 
 # Tab 0: Weergeven van de gegevens
 with tabs[0]: #dit is het meest linkse tabblad
     # Data ophalen en verwerken
-    if "weather_data" in st.session_state:
-        weather_data = st.session_state.weather_data
+    if "weer_data" in st.session_state:
+        weather_data = st.session_state.weer_data
 
         # Maak een DataFrame van de weergegevens
         weather_df = pd.DataFrame(weather_data["hourly"])
@@ -1205,15 +1205,15 @@ with tabs[0]: #dit is het meest linkse tabblad
         # Default slider range van 08:00 tot 18:00 uur
         default_start = 5  # 05:00 uur
         default_end = 22   # 22:00 uur
-        if "last_hours" not in st.session_state:
-            st.session_state.last_hours = default_hours  # Zorg ervoor dat er altijd een standaardwaarde is
+        if "weer_last_hours" not in st.session_state:
+            st.session_state.weer_last_hours = default_hours  # Zorg ervoor dat er altijd een standaardwaarde is
         # Verkrijg het tijdsbereik van de slider in de sidebar (default tussen 08:00 en 18:00 uur)
 
         # Controleer of de sliderwaarden van start_end veranderd zijn
         if (
-                locatie_keuze != st.session_state.last_locatie
-                or geselecteerde_datum != st.session_state.last_datum
-                or default_hours != st.session_state.last_hours
+                locatie_keuze != st.session_state.weer_last_locatie
+                or geselecteerde_datum != st.session_state.weer_last_datum
+                or default_hours != st.session_state.weer_last_hours
         ):
             lat, lon, adres = toon_geolocatie_op_kaart(f"{locatie_keuze}, {land_keuze}")
             if lat and lon:
@@ -1221,14 +1221,14 @@ with tabs[0]: #dit is het meest linkse tabblad
                 weather_data = get_weather_data_historical(lat, lon, geselecteerde_datum)
 
                 # Update de session_state met de nieuwe waarden
-                st.session_state.last_locatie = locatie_keuze
-                st.session_state.last_datum = geselecteerde_datum
-                st.session_state.last_hours = start_end
-                st.session_state.weather_data = weather_data
-                st.session_state.lat = lat
-                st.session_state.lon = lon
-                st.session_state.adres = adres
-                st.session_state.gps_format = gps_format
+                st.session_state.weer_last_locatie = locatie_keuze
+                st.session_state.weer_last_datum = geselecteerde_datum
+                st.session_state.weer_last_hours = start_end
+                st.session_state.weer_data = weather_data
+                st.session_state.weer_lat = lat
+                st.session_state.weer_lon = lon
+                st.session_state.weer_adres = adres
+                st.session_state.weer_gps_format = gps_format
 
 
         start_end = st.sidebar.slider("Selecteer het tijdsbereik", 0, 23, (default_start, default_end), format = "%d:00", key="sidebaronder")
@@ -1237,9 +1237,9 @@ with tabs[0]: #dit is het meest linkse tabblad
         #value = default_hours,
         #format = "%d:00",
         st.sidebar.write(f"**{land}**, {stad}")
-        st.sidebar.write(f"**GPS:** {st.session_state.gps_format}")
+        st.sidebar.write(f"**GPS:** {st.session_state.weer_gps_format}")
         #st.sidebar.write(f"{lat}, {lon}")
-        #st.sidebar.write(f"{st.session_state.lat}, {st.session_state.lon}")
+        #st.sidebar.write(f"{st.session_state.weer_lat}, {st.session_state.weer_lon}")
 
         # Filter de gegevens op basis van de slider
         filtered_data = weather_df.iloc[start_end[0]:start_end[1] + 1]
@@ -1329,12 +1329,12 @@ with tabs[1]:
     )
 
     # Controleer of sessiestatus waarden bevat
-    if "lat" not in st.session_state or "lon" not in st.session_state:
+    if "weer_lat" not in st.session_state or "weer_lon" not in st.session_state:
         st.error("Latitude en Longitude zijn niet ingesteld. Stel eerst een locatie in.")
     else:
         # Haal waarden op uit sessiestatus
-        latitude = st.session_state.lat
-        longitude = st.session_state.lon
+        latitude = st.session_state.weer_lat
+        longitude = st.session_state.weer_lon
 
         # API-aanroep voor weersvoorspellingen
         API_URL = (
@@ -1353,8 +1353,8 @@ with tabs[1]:
         weather_data_forecast = get_weather_data_forecast()
 
         # Haal latitude en longitude op uit session_state of stel defaults in
-        lat = st.session_state.get("lat", 50.681)  # Standaardwaarde als lat niet is ingesteld
-        lon = st.session_state.get("lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
+        lat = st.session_state.get("weer_lat", 50.681)  # Standaardwaarde als lat niet is ingesteld
+        lon = st.session_state.get("weer_lon", 4.768)   # Standaardwaarde als lon niet is ingesteld
 
         # Maak de dynamische Windy widget URL
         windy_url = f"https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=bft&zoom=7&overlay={overlays[st.session_state.windy_overlay]}&product=ecmwf&level=surface&lat={lat}&lon={lon}&detailLat={lat}&detailLon={lon}&detail=true&pressure=true"
