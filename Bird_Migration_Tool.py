@@ -1639,7 +1639,7 @@ with tabs[2]:
                 f"🌧️ Neerslag: {punt['neerslag']} mm<br>"
                 f"📊 Druk: {punt['druk']} hPa<br>"
                 f"🌀 BLH: {punt['blh']} m<br>"
-                f"<b>✈️ Vlieghoogte: {vh_lbl}</b><br>"
+                f"<b>🦅 Vlieghoogte: {vh_lbl}</b><br>"
                 f"<i style='font-size:11px;color:#555'>{vh_tip}</i>"
                 f"<br><i style='font-size:10px;color:#888'>Weerdisplay: 12:00 UTC · Score: 24-uurs gemiddelde</i>"
                 + (
