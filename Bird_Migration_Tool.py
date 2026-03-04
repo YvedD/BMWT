@@ -1828,16 +1828,26 @@ with tabs[2]:
 
     # Laad zeebries-data eenmalig voor alle dagkaarten
     _zb_per_dag: list[list[dict]] = [[] for _ in range(ZEEBRIES_HORIZON_DAYS)]
+    _zb_laad_fout = False
     try:
         _zb_per_dag, _, _ = laad_zeebries_kustdata()
     except Exception:
-        pass
+        _zb_laad_fout = True
 
     n_punten = len(days_data[0]) if days_data else 0
+    _zb_n_locaties = len(_zb_per_dag[0]) if _zb_per_dag and _zb_per_dag[0] else 0
+    _zb_status = (
+        f"🌬️ {_zb_n_locaties} zeebries-kustpunten geladen"
+        if not _zb_laad_fout and _zb_n_locaties > 0
+        else "⚠️ Zeebries-data niet beschikbaar (vlaggen ontbreken)"
+    )
     st.caption(
         f"⏱️ Gegevens opgehaald om **{opgehaald_om} UTC** — "
-        f"{n_punten} rasterpunten per dag (~100 × 100 km, VK/Ierland/Man-eiland uitgesloten)"
+        f"{n_punten} rasterpunten per dag (~100 × 100 km, VK/Ierland/Man-eiland uitgesloten) — "
+        f"{_zb_status}"
     )
+    if _zb_laad_fout:
+        st.warning("⚠️ Zeebries-voorspelling kon niet worden opgehaald. Kustkaarten tonen geen zeebries-vlaggen.")
 
     # Gedeelde kleurlegende (eenmalig boven alle 6 kaarten)
     st.markdown(
