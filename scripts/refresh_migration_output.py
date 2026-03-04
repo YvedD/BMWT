@@ -7,10 +7,17 @@ Western Europe (anchored on Tarifa, Spain) and computes a migration-
 favourability score for each grid point per day.
 
 Grid points in the sea or in the United Kingdom are excluded automatically
-via TimezoneFinder.
+via TimezoneFinder.  Coastal sea-boundary points (adjacent to at least one
+valid land grid point) are included as 'zee_grenspunt' for offshore weather.
 
-Score  0.0 = extremely unfavourable (BLUE)
-Score  1.0 = extremely favourable   (RED)
+Score  0.0 = extremely unfavourable
+Score  1.0 = extremely favourable
+
+NOTE – Zeebries (sea breeze) detection is NOT included in this script.
+  The sea breeze feature uses a separate fine-resolution coastal grid
+  (~10 × 10 km along BE/NL/N-FR coast) and the Open-Meteo Marine API for
+  SST data.  It is computed live in the Streamlit app (Bird_Migration_Tool.py,
+  laad_zeebries_kustdata / detecteer_zeebries_uur) with its own 30-min cache.
 
 Run by the GitHub Actions workflow every 30 minutes.
 Output: data/migration/latest.json
@@ -141,7 +148,14 @@ def is_geldig_punt(lat: float, lon: float) -> bool:
 # ---------------------------------------------------------------------------
 
 def build_grid_points() -> list[dict]:
-    """Return land-only grid points anchored at Tarifa, covering Western Europe."""
+    """Return land grid points + coastal sea boundary points anchored at Tarifa.
+
+    Sea boundary points are grid cells in the ocean that directly border
+    (in any of the 8 compass directions) at least one valid land grid point.
+    They are included so that coastal-zone weather data is available for
+    the migration score computation.  UK, Ireland and Isle of Man remain
+    excluded throughout.
+    """
     lats: set[float] = set()
     n = 0
     while True:
@@ -178,11 +192,35 @@ def build_grid_points() -> list[dict]:
             lons.add(lon)
         n -= 1
 
+    # First pass: collect all valid land points
+    land_set: set[tuple[float, float]] = set()
+    for lat in lats:
+        for lon in lons:
+            if is_geldig_punt(lat, lon):
+                land_set.add((lat, lon))
+
+    # Second pass: build final list with land + sea boundary points
     points = []
     for lat in sorted(lats):
         for lon in sorted(lons):
-            if is_geldig_punt(lat, lon):
-                points.append({"latitude": lat, "longitude": lon})
+            if (lat, lon) in land_set:
+                points.append({"latitude": lat, "longitude": lon, "zee_grenspunt": False})
+            else:
+                # Include sea point if it borders at least one valid land point
+                borders_land = False
+                for dlat in (-1.0, 0.0, 1.0):
+                    for dlon in (-1.0, 0.0, 1.0):
+                        if dlat == 0.0 and dlon == 0.0:
+                            continue
+                        nlat = round(lat + dlat * LAT_STEP, 1)
+                        nlon = round(lon + dlon * LON_STEP, 1)
+                        if (nlat, nlon) in land_set:
+                            borders_land = True
+                            break
+                    if borders_land:
+                        break
+                if borders_land:
+                    points.append({"latitude": lat, "longitude": lon, "zee_grenspunt": True})
     return points
 
 
@@ -563,9 +601,10 @@ def process_point(point: dict) -> dict:
             "weather":      weather,
         })
     return {
-        "latitude":  lat,
-        "longitude": lon,
-        "days":      days,
+        "latitude":     lat,
+        "longitude":    lon,
+        "zee_grenspunt": point.get("zee_grenspunt", False),
+        "days":         days,
     }
 
 
