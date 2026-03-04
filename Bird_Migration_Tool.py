@@ -1808,15 +1808,30 @@ with tabs[2]:
 
     **Kleurschaal (10 banden):** 🟢 Uitstekend ≥ 90 · Zeer goed 80–90 · Goed 70–80 · Vrij goed 60–70 · Redelijk 50–60 · Matig 40–50 · Ongunstig 30–40 · Slecht 20–30 · Zeer slecht 10–20 · 🔴 Verwaarloosbaar < 10
 
+    **🌬️ Zeebries-vlaggen (kustlocaties Saint-Malo t/m Esbjerg):**
+    Op elke dagkaart zijn de zeebries-vlaggen zichtbaar voor de kustlocaties.
+    De vlaggen zijn tijdsgevoelig: selecteer een uur om te zien of er zeebries verwacht wordt op dat specifieke moment.
+    - 🚩 **Rode vlag** = zeebries waarschijnlijk (ΔT ≥ 4 °C, wind < 3 Bf, bewolking < 60 %)
+    - 🟢 **Groene vlag** = geen zeebries verwacht
+    *SST via Open-Meteo Marine API; fallback = klimatologisch maandgemiddelde Zuidelijke Noordzee.*
+
     *Gegevens gecacheerd voor 30 minuten. Klik op "Ververs nu" voor actuele data.*
         """)
 
     if st.button("🔄 Ververs nu", key="ververs_raster_6d"):
         laad_migratie_rasterdata_6daags.clear()
+        laad_zeebries_kustdata.clear()
         st.rerun()
 
     with st.spinner("Weervoorspelling ophalen voor 6-daags migratieraster — even geduld..."):
         days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag = laad_migratie_rasterdata_6daags()
+
+    # Laad zeebries-data eenmalig voor alle dagkaarten
+    _zb_per_dag: list[list[dict]] = [[] for _ in range(ZEEBRIES_HORIZON_DAYS)]
+    try:
+        _zb_per_dag, _, _ = laad_zeebries_kustdata()
+    except Exception:
+        pass
 
     n_punten = len(days_data[0]) if days_data else 0
     st.caption(
@@ -1899,7 +1914,7 @@ with tabs[2]:
                 klasse_lbl = migratie_score_naar_klasse(uur_score)
             else:
                 score_pct  = int(punt["score"] * 100)
-                kleur      = punt["kleur"]
+                kleur      = migratie_score_naar_kleur(punt["score"])
                 klasse_lbl = punt["klasse"]
 
             # Weerwaarden voor popup: daggemiddelde als standaard, uurspecifiek indien geselecteerd
@@ -1976,6 +1991,79 @@ with tabs[2]:
                 tooltip=tooltip_tekst,
             ).add_to(m_dag)
 
+        # Zeebries-vlaggen op de kaart (tijdsgevoelig)
+        _zb_dagdata = _zb_per_dag[dag_idx] if dag_idx < len(_zb_per_dag) else []
+        for _zb_punt in _zb_dagdata:
+            _zb_uur_flags = _zb_punt.get("zeebries_uren", [])
+            if selected_uur is not None:
+                _actief = (
+                    _zb_uur_flags[selected_uur]
+                    if 0 <= selected_uur < len(_zb_uur_flags)
+                    else False
+                )
+            else:
+                _actief = _zb_punt["zeebries_actief"]
+
+            _n_uren  = _zb_punt["zeebries_n_uren"]
+            _start_h = _zb_punt.get("zeebries_start")
+            _stop_h  = _zb_punt.get("zeebries_stop")
+            _sst     = _zb_punt.get("sst_middag")
+            _dt_max  = max(_zb_punt.get("delta_t_uren", []) or [0.0])
+            _sst_is_fallback = (_sst == _NOORDZEE_SST_FALLBACK.get(date.today().month))
+            _naam    = _zb_punt.get("naam", "")
+
+            _vlag_kleur = "#cc0000" if _actief else "#00cc00"
+            _vlag_html = (
+                f"<div style='position:relative;width:26px;height:34px;"
+                f"background:transparent;'>"
+                f"<div style='position:absolute;left:3px;top:0;width:3px;height:34px;"
+                f"background:#222222;'></div>"
+                f"<div style='position:absolute;left:6px;top:2px;width:18px;height:14px;"
+                f"background:{_vlag_kleur};border:1.5px solid rgba(0,0,0,0.6);'></div>"
+                f"</div>"
+            )
+            if selected_uur is not None:
+                _uur_info = (
+                    f"⏰ {selected_uur:02d}:00 UTC — "
+                    + ("<b style='color:#cc0000;'>🚩 Zeebries</b>" if _actief else "<b style='color:#00aa00;'>✅ Geen zeebries</b>")
+                    + "<br>"
+                )
+            else:
+                _uur_info = (
+                    (f"⏰ {_start_h:02d}:00–{_stop_h:02d}:00 UTC ({_n_uren}u)<br>"
+                     if _actief and _start_h is not None and _stop_h is not None else "")
+                )
+            _popup_html = (
+                f"<div style='font-size:12px;min-width:200px;'>"
+                f"<b>{_naam}</b><br>"
+                f"{'<b style=\"color:#cc0000;\">🚩 Zeebries verwacht</b>' if _actief else '<b style=\"color:#00aa00;\">✅ Geen zeebries</b>'}<br>"
+                f"📍 {_zb_punt['latitude']}°N, {_zb_punt['longitude']}°E<br>"
+                + _uur_info
+                + (f"🌡️ Max ΔT (land−zee): <b>{_dt_max:.1f} °C</b><br>" if _dt_max > 0 else "")
+                + (f"🌊 SST: {_sst:.1f} °C"
+                   + (" ⚠️ <i>(klimatol.)</i>" if _sst_is_fallback else "")
+                   + "<br>" if _sst is not None else "")
+                + "</div>"
+            )
+            _tooltip = (
+                f"🌬️ {'🚩 ZEEBRIES — ' if _actief else '✅ '}{_naam}"
+                + (f" | {selected_uur:02d}:00 UTC" if selected_uur is not None else "")
+                + (f" | {_start_h:02d}h–{_stop_h:02d}h UTC"
+                   if selected_uur is None and _actief and _start_h is not None and _stop_h is not None
+                   else "")
+            )
+            folium.Marker(
+                location=[_zb_punt["latitude"], _zb_punt["longitude"]],
+                icon=folium.DivIcon(
+                    icon_size=(26, 34),
+                    icon_anchor=(3, 34),
+                    html=_vlag_html,
+                    class_name="",
+                ),
+                popup=folium.Popup(_popup_html, max_width=230),
+                tooltip=_tooltip,
+            ).add_to(m_dag)
+
         with col_kaart:
             st_folium(
                 m_dag, height=500, returned_objects=[],
@@ -1992,117 +2080,6 @@ with tabs[2]:
             )
 
         st.divider()
-
-    # -----------------------------------------------------------------------
-    # Zeebries kustdetector — vaste kustlocaties (Saint-Malo t/m Esbjerg)
-    # -----------------------------------------------------------------------
-    st.divider()
-    with st.expander("🌬️ Zeebries kustdetector — kustlocaties (Saint-Malo t/m Esbjerg)", expanded=False):
-        st.markdown("""
-**Zeebries** ontstaat wanneer het land sterker opwarmt dan de zee
-(ΔT ≥ 4 °C) bij zwakke synoptische wind (< 3 Bf) en niet te bewolkte hemel.
-De zeebries reikt slechts **5–15 km landinwaarts** en vormt een echte
-**migratie-stopper** voor vogels die langs de kust trekken.
-
-- 🚩 **Rode vlag** = zeebries waarschijnlijk
-- 🟢 **Groene vlag** = geen zeebries verwacht
-
-*Methode: ΔT = prognose T_land − SST.  SST via Open-Meteo Marine API;
-fallback = klimatologisch maandgemiddelde Zuidelijke Noordzee.*
-        """)
-
-        col_zb_btn, col_zb_dag = st.columns([1, 3])
-        with col_zb_btn:
-            if st.button("🔄 Ververs", key="ververs_zeebries"):
-                laad_zeebries_kustdata.clear()
-                st.rerun()
-
-        with st.spinner("Zeebries-voorspelling laden (Marine API + landweer)..."):
-            _zb_per_dag, _zb_datums, _zb_opgehaald_om = laad_zeebries_kustdata()
-
-        with col_zb_dag:
-            _zb_dag_opties = [f"Vandaag ({_zb_datums[0]})"] + [
-                f"Dag +{i} ({_zb_datums[i]})" for i in range(1, ZEEBRIES_HORIZON_DAYS)
-            ]
-            _zb_keuze = st.selectbox("Dag:", _zb_dag_opties, key="zeebries_dag")
-            _zb_dag_idx = _zb_dag_opties.index(_zb_keuze)
-
-        _zb_dagdata = _zb_per_dag[_zb_dag_idx]
-        _zb_n_actief = sum(1 for p in _zb_dagdata if p["zeebries_actief"])
-        _zb_marine_ok = any(
-            p["sst_middag"] != _NOORDZEE_SST_FALLBACK.get(date.today().month)
-            for p in _zb_dagdata
-        )
-        st.caption(
-            f"⏱️ Data opgehaald: **{_zb_opgehaald_om} UTC** — "
-            f"{len(_zb_dagdata)} kustlocaties, {_zb_n_actief} met zeebries verwacht — "
-            + ("🌊 Marine API: OK" if _zb_marine_ok else "⚠️ Marine API niet bereikbaar (klimatologische SST gebruikt)")
-        )
-
-        # Zeebries folium-kaart (kustzone Saint-Malo t/m Esbjerg)
-        m_zeebries = folium.Map(
-            location=[ZEEBRIES_MAP_CENTER_LAT, ZEEBRIES_MAP_CENTER_LON],
-            zoom_start=ZEEBRIES_MAP_ZOOM,
-            tiles="CartoDB positron"
-        )
-
-        for _zb_punt in _zb_dagdata:
-            _actief   = _zb_punt["zeebries_actief"]
-            _n_uren   = _zb_punt["zeebries_n_uren"]
-            _start_h  = _zb_punt.get("zeebries_start")
-            _stop_h   = _zb_punt.get("zeebries_stop")
-            _sst      = _zb_punt.get("sst_middag")
-            _dt_max   = max(_zb_punt["delta_t_uren"]) if _zb_punt["delta_t_uren"] else 0.0
-            _sst_is_fallback = (_sst == _NOORDZEE_SST_FALLBACK.get(date.today().month))
-            _naam     = _zb_punt.get("naam", "")
-
-            # Vlag: rood bij zeebries, felgroen bij geen zeebries
-            _vlag_kleur = "#cc0000" if _actief else "#00cc00"
-            _vlag_html = (
-                f"<div style='position:relative;width:26px;height:34px;"
-                f"background:transparent;'>"
-                f"<div style='position:absolute;left:3px;top:0;width:3px;height:34px;"
-                f"background:#222222;'></div>"
-                f"<div style='position:absolute;left:6px;top:2px;width:18px;height:14px;"
-                f"background:{_vlag_kleur};border:1.5px solid rgba(0,0,0,0.6);'></div>"
-                f"</div>"
-            )
-
-            _popup_html = (
-                f"<div style='font-size:12px;min-width:200px;'>"
-                f"<b>{_naam}</b><br>"
-                f"{'<b style=\"color:#cc0000;\">🚩 Zeebries verwacht</b>' if _actief else '<b style=\"color:#00aa00;\">✅ Geen zeebries</b>'}<br>"
-                f"📍 {_zb_punt['latitude']}°N, {_zb_punt['longitude']}°E<br>"
-                + (f"⏰ {_start_h:02d}:00–{_stop_h:02d}:00 UTC ({_n_uren}u)<br>" if _actief and _start_h is not None and _stop_h is not None else "")
-                + (f"🌡️ Max ΔT (land−zee): <b>{_dt_max:.1f} °C</b><br>" if _dt_max > 0 else "")
-                + (f"🌊 SST: {_sst:.1f} °C"
-                   + (" ⚠️ <i>(klimatol.)</i>" if _sst_is_fallback else "")
-                   + "<br>" if _sst is not None else "")
-                + "</div>"
-            )
-            _tooltip = (
-                f"{'🚩 ZEEBRIES — ' if _actief else '✅ '}{_naam}"
-                + (f" | {_start_h:02d}h–{_stop_h:02d}h UTC" if _actief and _start_h is not None and _stop_h is not None else "")
-            )
-
-            folium.Marker(
-                location=[_zb_punt["latitude"], _zb_punt["longitude"]],
-                icon=folium.DivIcon(
-                    icon_size=(26, 34),
-                    icon_anchor=(3, 34),
-                    html=_vlag_html,
-                    class_name="",
-                ),
-                popup=folium.Popup(_popup_html, max_width=230),
-                tooltip=_tooltip,
-            ).add_to(m_zeebries)
-
-        st_folium(
-            m_zeebries, height=520,
-            returned_objects=[],
-            use_container_width=True,
-            key="kaart_zeebries",
-        )
 
 
 with tabs[3]:
