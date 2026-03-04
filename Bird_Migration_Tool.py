@@ -10,7 +10,6 @@ import pytz
 from io import BytesIO
 import time
 import math
-import colorsys
 import concurrent.futures
 import threading
 from geopy.exc import GeocoderUnavailable, GeocoderRateLimited
@@ -729,20 +728,29 @@ def migratie_score_naar_klasse(score):
 
 
 def migratie_score_naar_kleur(score):
-    """Converteer migratiescore naar hex-kleur.
+    """Converteer migratiescore naar hex-kleur via RGB-interpolatie.
 
-    Gradient: donkergroen (100%) → geel (midpunt 40–50%) → donkerrood (0%).
-    Breekpunt geel ligt op score 0.45 (midden van de klasse 40–50%).
+    Gradient: fel donkerrood (0%) → fel citroengeel (40–50%) → fel muntgroen (100%).
+    Ankerkleuren (RGB):
+      - 0%  : fel donkerrood  (176,   0,   0)
+      - 45% : fel citroengeel (255, 255,   0)  [midden klasse 40–50%]
+      - 100%: fel muntgroen   (  0, 255, 128)
     """
     YELLOW_AT = 0.45
+    R_RED = (176,   0,   0)   # fel donkerrood
+    R_YEL = (255, 255,   0)   # fel citroengeel
+    R_GRN = (  0, 255, 128)   # fel muntgroen
     if score >= YELLOW_AT:
         t = (score - YELLOW_AT) / (1.0 - YELLOW_AT)  # 0 = geel, 1 = groen
-        hue = (60.0 + t * 60.0) / 360.0              # 60° → 120°
+        r = int(R_YEL[0] + t * (R_GRN[0] - R_YEL[0]))
+        g = int(R_YEL[1] + t * (R_GRN[1] - R_YEL[1]))
+        b = int(R_YEL[2] + t * (R_GRN[2] - R_YEL[2]))
     else:
         t = score / YELLOW_AT                          # 0 = rood, 1 = geel
-        hue = t * 60.0 / 360.0                        # 0° → 60°
-    r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 0.70)    # v=0.70 → herkenbare kleuren
-    return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
+        r = int(R_RED[0] + t * (R_YEL[0] - R_RED[0]))
+        g = int(R_RED[1] + t * (R_YEL[1] - R_RED[1]))
+        b = int(R_RED[2] + t * (R_YEL[2] - R_RED[2]))
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def _haal_weer_rasterpunt(punt):
@@ -1821,25 +1829,25 @@ with tabs[2]:
         """
         <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;
                     margin-bottom:8px;font-size:13px;">
-          <span><span style="background:#10b200;padding:2px 8px;border-radius:4px;
-                color:white;">●</span>&nbsp;Uitstekend ≥ 90</span>
-          <span><span style="background:#30b200;padding:2px 8px;border-radius:4px;
-                color:white;">●</span>&nbsp;Zeer goed 80–90</span>
-          <span><span style="background:#51b200;padding:2px 8px;border-radius:4px;
-                color:white;">●</span>&nbsp;Goed 70–80</span>
-          <span><span style="background:#71b200;padding:2px 8px;border-radius:4px;
-                color:white;">●</span>&nbsp;Vrij goed 60–70</span>
-          <span><span style="background:#92b200;padding:2px 8px;border-radius:4px;
-                color:white;">●</span>&nbsp;Redelijk 50–60</span>
-          <span><span style="background:#b2b200;padding:2px 8px;border-radius:4px;
-                color:white;">●</span>&nbsp;Matig 40–50</span>
-          <span><span style="background:#b28a00;padding:2px 8px;border-radius:4px;
-                color:white;">●</span>&nbsp;Ongunstig 30–40</span>
-          <span><span style="background:#b26300;padding:2px 8px;border-radius:4px;
+          <span><span style="background:#17ff74;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Uitstekend ≥ 90</span>
+          <span><span style="background:#45ff5d;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Zeer goed 80–90</span>
+          <span><span style="background:#73ff45;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Goed 70–80</span>
+          <span><span style="background:#a2ff2e;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Vrij goed 60–70</span>
+          <span><span style="background:#d0ff17;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Redelijk 50–60</span>
+          <span><span style="background:#ffff00;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Matig 40–50</span>
+          <span><span style="background:#edc600;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Ongunstig 30–40</span>
+          <span><span style="background:#db8d00;padding:2px 8px;border-radius:4px;
                 color:white;">●</span>&nbsp;Slecht 20–30</span>
-          <span><span style="background:#b23b00;padding:2px 8px;border-radius:4px;
+          <span><span style="background:#ca5500;padding:2px 8px;border-radius:4px;
                 color:white;">●</span>&nbsp;Zeer slecht 10–20</span>
-          <span><span style="background:#b21300;padding:2px 8px;border-radius:4px;
+          <span><span style="background:#b81c00;padding:2px 8px;border-radius:4px;
                 color:white;">●</span>&nbsp;Verwaarloosbaar &lt; 10</span>
         </div>
         """,
@@ -2051,11 +2059,12 @@ fallback = klimatologisch maandgemiddelde Zuidelijke Noordzee.*
             # Vlag: rood bij zeebries, felgroen bij geen zeebries
             _vlag_kleur = "#cc0000" if _actief else "#00cc00"
             _vlag_html = (
-                f"<div style='position:relative;width:22px;height:28px;'>"
-                f"<div style='position:absolute;left:0;top:0;width:3px;height:28px;"
-                f"background:#333;'></div>"
-                f"<div style='position:absolute;left:3px;top:0;width:16px;height:12px;"
-                f"background:{_vlag_kleur};border:1px solid rgba(0,0,0,0.3);'></div>"
+                f"<div style='position:relative;width:26px;height:34px;"
+                f"background:transparent;'>"
+                f"<div style='position:absolute;left:3px;top:0;width:3px;height:34px;"
+                f"background:#222222;'></div>"
+                f"<div style='position:absolute;left:6px;top:2px;width:18px;height:14px;"
+                f"background:{_vlag_kleur};border:1.5px solid rgba(0,0,0,0.6);'></div>"
                 f"</div>"
             )
 
@@ -2079,9 +2088,10 @@ fallback = klimatologisch maandgemiddelde Zuidelijke Noordzee.*
             folium.Marker(
                 location=[_zb_punt["latitude"], _zb_punt["longitude"]],
                 icon=folium.DivIcon(
-                    icon_size=(22, 28),
-                    icon_anchor=(1, 28),
+                    icon_size=(26, 34),
+                    icon_anchor=(3, 34),
                     html=_vlag_html,
+                    class_name="",
                 ),
                 popup=folium.Popup(_popup_html, max_width=230),
                 tooltip=_tooltip,
