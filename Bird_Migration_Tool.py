@@ -465,8 +465,8 @@ def migratie_score_naar_klasse(score):
 
 
 def migratie_score_naar_kleur(score):
-    """Converteer migratiescore naar hex-kleur: rood (gunstig) → blauw (ongunstig)."""
-    hue = (1.0 - score) * 240.0 / 360.0   # 0° (rood) bij score=1, 240° (blauw) bij score=0
+    """Converteer migratiescore naar hex-kleur: groen (gunstig) → rood (ongunstig)."""
+    hue = score * 120.0 / 360.0   # 120° (groen) bij score=1, 0° (rood) bij score=0
     r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
     return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
 
@@ -1477,7 +1477,8 @@ with tabs[1]:
 
 with tabs[2]:
     st.header("🦅 Migratie Raster — 5-Daagse Voorspelling")
-    st.markdown("""
+    with st.expander("ℹ️ Extra informatie"):
+        st.markdown("""
     Vijfdaagse migratievoorspelling op basis van weergegevens voor een configureerbaar raster
     over **België, Nederland en Duitsland** (en omgeving).
     Rasterpunten in zee, Groot-Brittannië, Ierland en het Man-eiland worden buiten beschouwing gelaten.
@@ -1521,12 +1522,12 @@ with tabs[2]:
     **Vlieghoogte & zichtbaarheid (cirkelgrootte op de kaart):**
     Op *gunstige trekdagen met weinig wind* vliegen vogels **hoog** en worden ze minder opgemerkt.
     Een hogere windkracht (< 7 Bf) duwt vogels naar **lagere hoogtes** en maakt ze beter waarneembaar.
-    De cirkelgrootte geeft dit aan: 🔵 *groot* = vogels laag & zichtbaar · 🔵 *klein* = vogels hoog of trek beperkt.
+    De cirkelgrootte geeft dit aan: 🟢 *groot* = vogels laag & zichtbaar · 🟢 *klein* = vogels hoog of trek beperkt.
 
-    **Kleurschaal (10 banden):** 🔴 Uitstekend ≥ 90 · Zeer goed 80–90 · Goed 70–80 · Vrij goed 60–70 · Redelijk 50–60 · Matig 40–50 · Ongunstig 30–40 · Slecht 20–30 · Zeer slecht 10–20 · 🔵 Verwaarloosbaar < 10
+    **Kleurschaal (10 banden):** 🟢 Uitstekend ≥ 90 · Zeer goed 80–90 · Goed 70–80 · Vrij goed 60–70 · Redelijk 50–60 · Matig 40–50 · Ongunstig 30–40 · Slecht 20–30 · Zeer slecht 10–20 · 🔴 Verwaarloosbaar < 10
 
     *Gegevens gecacheerd voor 30 minuten. Klik op "Ververs nu" voor actuele data.*
-    """)
+        """)
 
     col_res, col_btn = st.columns([4, 1])
     with col_res:
@@ -1562,25 +1563,25 @@ with tabs[2]:
         """
         <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;
                     margin-bottom:8px;font-size:13px;">
-          <span><span style="background:#ff0000;padding:2px 8px;border-radius:4px;
-                color:white;">●</span>&nbsp;Uitstekend ≥ 90</span>
-          <span><span style="background:#ff6500;padding:2px 8px;border-radius:4px;
-                color:white;">●</span>&nbsp;Zeer goed 80–90</span>
-          <span><span style="background:#ffcb00;padding:2px 8px;border-radius:4px;
-                color:black;">●</span>&nbsp;Goed 70–80</span>
-          <span><span style="background:#cbff00;padding:2px 8px;border-radius:4px;
-                color:black;">●</span>&nbsp;Vrij goed 60–70</span>
           <span><span style="background:#00ff00;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Uitstekend ≥ 90</span>
+          <span><span style="background:#33ff00;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Zeer goed 80–90</span>
+          <span><span style="background:#65ff00;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Goed 70–80</span>
+          <span><span style="background:#99ff00;padding:2px 8px;border-radius:4px;
+                color:black;">●</span>&nbsp;Vrij goed 60–70</span>
+          <span><span style="background:#cbff00;padding:2px 8px;border-radius:4px;
                 color:black;">●</span>&nbsp;Redelijk 50–60</span>
-          <span><span style="background:#00ff66;padding:2px 8px;border-radius:4px;
+          <span><span style="background:#ffff00;padding:2px 8px;border-radius:4px;
                 color:black;">●</span>&nbsp;Matig 40–50</span>
-          <span><span style="background:#00ffcb;padding:2px 8px;border-radius:4px;
+          <span><span style="background:#ffcc00;padding:2px 8px;border-radius:4px;
                 color:black;">●</span>&nbsp;Ongunstig 30–40</span>
-          <span><span style="background:#00cbff;padding:2px 8px;border-radius:4px;
+          <span><span style="background:#ff9900;padding:2px 8px;border-radius:4px;
                 color:black;">●</span>&nbsp;Slecht 20–30</span>
-          <span><span style="background:#0066ff;padding:2px 8px;border-radius:4px;
+          <span><span style="background:#ff6600;padding:2px 8px;border-radius:4px;
                 color:white;">●</span>&nbsp;Zeer slecht 10–20</span>
-          <span><span style="background:#0000ff;padding:2px 8px;border-radius:4px;
+          <span><span style="background:#ff0000;padding:2px 8px;border-radius:4px;
                 color:white;">●</span>&nbsp;Verwaarloosbaar &lt; 10</span>
         </div>
         """,
@@ -1604,21 +1605,20 @@ with tabs[2]:
         else:
             vh_meest = "?"
 
-        # Uur-keuze dropdown boven de kaart
-        _uur_opties = ["Daggemiddelde (24u)"] + [f"{h:02d}:00 uur" for h in range(24)]
-        _uur_keuze = st.selectbox(
-            "🕐 Toon uur (UTC):",
-            _uur_opties,
-            key=f"uur_keuze_{dag_idx}",
-        )
-        selected_uur = None if _uur_keuze == _uur_opties[0] else int(_uur_keuze.split(":")[0])
+        # Initialiseer sessie-state voor uur-selectie als nog niet aanwezig
+        if f"uur_radio_{dag_idx}" not in st.session_state:
+            st.session_state[f"uur_radio_{dag_idx}"] = "📊 Dag"
+        _uur_keuze_val = st.session_state[f"uur_radio_{dag_idx}"]
+        selected_uur = None if _uur_keuze_val == "📊 Dag" else int(_uur_keuze_val.split(":")[0])
 
         uur_label = f" · uur {selected_uur:02d}:00 UTC" if selected_uur is not None else ""
         st.markdown(
             f"### {dag_titel} — {dag_label}  ·  gem. score: {gem_score}/100  ·  vlieghoogte: {vh_meest}{uur_label}"
         )
 
-        m_dag = folium.Map(location=[KAART_CENTER_LAT, KAART_CENTER_LON], zoom_start=5, tiles="CartoDB positron")
+        col_kaart, col_uren = st.columns([4, 1])
+
+        m_dag = folium.Map(location=[KAART_CENTER_LAT, KAART_CENTER_LON], zoom_start=4, tiles="CartoDB positron")
 
         for punt in raster_dag:
             # Gebruik uurlijkse score wanneer een uur geselecteerd is
@@ -1710,119 +1710,23 @@ with tabs[2]:
                 tooltip=tooltip_tekst,
             ).add_to(m_dag)
 
-        folium_result = st_folium(
-            m_dag, height=500, returned_objects=["last_object_clicked"],
-            use_container_width=True, key=f"raster_dag_{dag_idx}",
-        )
-
-        # Bepaal uurscores voor de grafiek: klikpunt of gemiddelde over alle punten
-        chart_punt = None
-        clicked = (folium_result or {}).get("last_object_clicked")
-        if clicked and isinstance(clicked, dict):
-            klik_lat = clicked.get("lat")
-            klik_lng = clicked.get("lng")
-            if klik_lat is not None and klik_lng is not None:
-                chart_punt = min(
-                    raster_dag,
-                    key=lambda p: (p["latitude"] - klik_lat) ** 2 + (p["longitude"] - klik_lng) ** 2,
-                )
-
-        if chart_punt is not None:
-            uurscores_dag = chart_punt["uurscores"]
-            chart_titel = (
-                f"Uurlijkse migratiescore — {dag_label} "
-                f"📍 {chart_punt['latitude']}°N {chart_punt['longitude']}°E (UTC)"
-            )
-            st.caption(
-                f"📍 Geselecteerd punt: **{chart_punt['latitude']}°N {chart_punt['longitude']}°E** "
-                f"— score {int(chart_punt['score'] * 100)}/100 ({chart_punt['klasse']}) "
-                f"· wind {chart_punt['wind_richting']} {chart_punt['wind_kracht']} Bf "
-                f"· {chart_punt['temperatuur']} °C · {chart_punt['neerslag']} mm "
-                f"· {chart_punt['druk']} hPa · BLH {chart_punt['blh']} m"
-            )
-        else:
-            uurscores_dag = uurgemiddelden_per_dag[dag_idx]
-            chart_titel = (
-                f"Uurlijkse migratiescore — {dag_label} "
-                f"(gemiddelde {n_punten} rasterpunten, UTC) — klik op een punt voor detail"
+        with col_kaart:
+            st_folium(
+                m_dag, height=500, returned_objects=[],
+                use_container_width=True, key=f"raster_dag_{dag_idx}",
             )
 
-        uur_df = pd.DataFrame({
-            "uur":   [f"{u:02d}:00" for u in range(24)],
-            "score": [round(s * 100) for s in uurscores_dag],
-        })
-        # Markeer het geselecteerde uur in de grafiek
-        uur_df["geselecteerd"] = [
-            1.0 if u == selected_uur else 0.55 for u in range(24)
-        ]
-        tijdlijn = (
-            alt.Chart(uur_df, title=chart_titel)
-            .mark_bar(size=16)
-            .encode(
-                x=alt.X("uur:O", title="Uur (UTC)", sort=None),
-                y=alt.Y("score:Q", scale=alt.Scale(domain=[0, 100]), title="Migratie-Score (0–100)"),
-                color=alt.Color(
-                    "score:Q",
-                    scale=alt.Scale(
-                        domain=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-                        range=[
-                            "#0000ff", "#0066ff", "#00cbff", "#00ffcb",
-                            "#00ff66", "#00ff00", "#65ff00", "#cbff00",
-                            "#ffcb00", "#ff6500", "#ff0000",
-                        ],
-                    ),
-                    legend=None,
-                ),
-                opacity=alt.Opacity(
-                    "geselecteerd:Q",
-                    scale=alt.Scale(domain=[0.55, 1.0], range=[0.55, 1.0]),
-                    legend=None,
-                ),
-                tooltip=[
-                    alt.Tooltip("uur:O", title="Uur"),
-                    alt.Tooltip("score:Q", title="Migratiescore (0–100)"),
-                ],
+        with col_uren:
+            _uur_opties = ["📊 Dag"] + [f"{h:02d}:00" for h in range(24)]
+            st.radio(
+                "Uur (UTC):",
+                _uur_opties,
+                key=f"uur_radio_{dag_idx}",
+                label_visibility="collapsed",
             )
-            .properties(height=350)
-        )
-        st.altair_chart(
-            tijdlijn, use_container_width=True,
-            key=f"tijdlijn_{dag_idx}",
-        )
 
         st.divider()
 
-    # Corridoranalyse voor BE / NL / DE
-    with st.expander("📊 Corridoranalyse — België · Nederland · Duitsland (dag per dag)"):
-        for dag_idx, (raster_dag, dag_label) in enumerate(zip(days_data, dag_datums)):
-            corridor = sorted(
-                [
-                    p for p in raster_dag
-                    if CORRIDOR_LAT_MIN <= p["latitude"] <= CORRIDOR_LAT_MAX
-                    and CORRIDOR_LON_MIN <= p["longitude"] <= CORRIDOR_LON_MAX
-                ],
-                key=lambda x: (x["latitude"], x["longitude"]),
-            )
-            dag_kop = "Vandaag" if dag_idx == 0 else f"Dag +{dag_idx}"
-            st.markdown(f"**{dag_kop} — {dag_label}**")
-            if corridor:
-                corridor_df = pd.DataFrame([{
-                    "Lat":              p["latitude"],
-                    "Lon":              p["longitude"],
-                    "Score":            f"{int(p['score'] * 100)}/100",
-                    "Klasse":           p["klasse"],
-                    "Wind":             f"{p['wind_richting']} {p['wind_kracht']} Bf",
-                    "Temp (°C)":        p["temperatuur"],
-                    "Neerslag (mm)":    p["neerslag"],
-                    "Druk (hPa)":       p["druk"],
-                    "BLH (m)":          p["blh"],
-                    "✈️ Vlieghoogte":   p.get("vlieghoogte", "?"),
-                    "🌟 BE/NL opt.":    "ZO 3–5Bf" if p.get("be_nl_zone") else "",
-                    "📦 Aanvoer %":     f"{int(p.get('supply_factor', 1.0) * 100)}%" if p.get("be_nl_zone") else "",
-                    "Fr supply %":      f"{int(p.get('supply_frankrijk', 0.5) * 100)}%" if p.get("be_nl_zone") else "",
-                    "Sp supply %":      f"{int(p.get('supply_spanje', 0.5) * 100)}%" if p.get("be_nl_zone") else "",
-                } for p in corridor])
-                st.dataframe(corridor_df, use_container_width=True)
 
 with tabs[3]:
     st.header("CROW project")
