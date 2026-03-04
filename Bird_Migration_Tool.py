@@ -40,6 +40,25 @@ hide_streamlit_style = """
         # MainMenu {visibility: hidden;} /* Verberg het menu rechtsboven */
         footer {visibility: hidden;}    /* Verberg de footer onderaan */
         header {visibility: hidden;}    /* Optioneel: verberg de header */
+
+        /* Uurkeuze-radio: compacte 2-kolomsweergave */
+        [data-testid="stRadioGroup"] {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            column-gap: 4px !important;
+            row-gap: 0px !important;
+        }
+        [data-testid="stRadioGroup"] label {
+            font-size: 11px !important;
+            padding: 1px 2px !important;
+            line-height: 1.3 !important;
+            min-height: unset !important;
+        }
+        [data-testid="stRadioGroup"] label [data-testid="stMarkdownContainer"] p {
+            font-size: 11px !important;
+            line-height: 1.3 !important;
+            margin: 0 !important;
+        }
     </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
@@ -227,9 +246,9 @@ VLIEGHOOGTE_LAAG_MIN         = 29    # 5–6 Bf: vogels vliegen laag (waarneemba
 VLIEGHOOGTE_MIDDEL_MIN       = 12    # 3–4 Bf: middelhoogte
 VLIEGHOOGTE_GESTOPT_THRESHOLD = 50   # ≥ 7 Bf: trek grotendeels afgeremd
 
-# Kaartcentrum voor BE/NL/DE-weergave
-KAART_CENTER_LAT = 50.5
-KAART_CENTER_LON = 7.5
+# Kaartcentrum: rasterpunt 48.0°N 4.8°E altijd in het midden
+KAART_CENTER_LAT = 48.0
+KAART_CENTER_LON = 4.8
 
 # Bounding box voor corridoranalyse BE/NL/DE
 CORRIDOR_LAT_MIN = 49.5
@@ -321,8 +340,10 @@ def migratie_genereer_rasterpunten(lat_step: float = None, lon_step: float = Non
     """Genereer rasterpunten met Tarifa als ankerpunt.
 
     Standaard ~100×100 km; geef lat_step=0.5 / lon_step=0.65 voor ~50×50 km.
-    Punten in zee, het VK, Ierland en het Man-eiland worden automatisch
-    uitgefilterd via migratie_is_geldig_punt().
+    Landpunten worden opgenomen via migratie_is_geldig_punt().
+    Extra: het eerste rasterpunt in zee dat direct grenst aan een geldig landpunt
+    ('zee-grenspunt') wordt ook opgenomen voor kustvogelmeting en kustzeescores.
+    VK, Ierland en Man-eiland blijven altijd uitgesloten.
     """
     _lat_step = lat_step if lat_step is not None else MIGRATIE_LAT_STEP
     _lon_step = lon_step if lon_step is not None else MIGRATIE_LON_STEP
@@ -363,11 +384,35 @@ def migratie_genereer_rasterpunten(lat_step: float = None, lon_step: float = Non
             lons.add(lon)
         n -= 1
 
+    # Eerste pass: verzamel alle geldige landpunten als opzoekverzameling
+    geldige_land_set: set[tuple[float, float]] = set()
+    for lat in lats:
+        for lon in lons:
+            if migratie_is_geldig_punt(lat, lon):
+                geldige_land_set.add((lat, lon))
+
+    # Tweede pass: bouw definitieve lijst met land- én zee-grenspunten
     punten = []
     for lat in sorted(lats):
         for lon in sorted(lons):
-            if migratie_is_geldig_punt(lat, lon):
-                punten.append({"latitude": lat, "longitude": lon})
+            if (lat, lon) in geldige_land_set:
+                punten.append({"latitude": lat, "longitude": lon, "zee_grenspunt": False})
+            else:
+                # Controleer of dit zeepunt grenst aan een geldig landpunt (alle 8 richtingen)
+                is_grens = False
+                for dlat in (-1.0, 0.0, 1.0):
+                    for dlon in (-1.0, 0.0, 1.0):
+                        if dlat == 0.0 and dlon == 0.0:
+                            continue
+                        nlat = round(lat + dlat * _lat_step, 2)
+                        nlon = round(lon + dlon * _lon_step, 2)
+                        if (nlat, nlon) in geldige_land_set:
+                            is_grens = True
+                            break
+                    if is_grens:
+                        break
+                if is_grens:
+                    punten.append({"latitude": lat, "longitude": lon, "zee_grenspunt": True})
     return punten
 
 
@@ -465,9 +510,9 @@ def migratie_score_naar_klasse(score):
 
 
 def migratie_score_naar_kleur(score):
-    """Converteer migratiescore naar hex-kleur: groen (gunstig) → rood (ongunstig)."""
+    """Converteer migratiescore naar hex-kleur: donkergroen (gunstig) → donkerrood (ongunstig)."""
     hue = score * 120.0 / 360.0   # 120° (groen) bij score=1, 0° (rood) bij score=0
-    r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+    r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 0.55)  # v=0.55 → donkere tinten
     return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
 
 
@@ -1037,6 +1082,7 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
             dag_punten.append({
                 "latitude":         punt["latitude"],
                 "longitude":        punt["longitude"],
+                "zee_grenspunt":    punt.get("zee_grenspunt", False),
                 "score":            score,
                 "klasse":           migratie_score_naar_klasse(score),
                 "kleur":            migratie_score_naar_kleur(score),
@@ -1529,33 +1575,17 @@ with tabs[2]:
     *Gegevens gecacheerd voor 30 minuten. Klik op "Ververs nu" voor actuele data.*
         """)
 
-    col_res, col_btn = st.columns([4, 1])
-    with col_res:
-        resolutie_keuze = st.radio(
-            "🗺️ Rasterresolutie:",
-            ["~100 × 100 km (snel)", "~50 × 50 km (trager, ~4× meer punten)"],
-            horizontal=True,
-            key="raster_resolutie",
-        )
-    with col_btn:
-        if st.button("🔄 Ververs nu", key="ververs_raster_6d"):
-            laad_migratie_rasterdata_6daags.clear()
-            st.rerun()
-
-    _lat_step = MIGRATIE_LAT_STEP_HOGE_RES if "50" in resolutie_keuze else MIGRATIE_LAT_STEP
-    _lon_step = MIGRATIE_LON_STEP_HOGE_RES if "50" in resolutie_keuze else MIGRATIE_LON_STEP
-    _res_label = "~50 × 50 km" if "50" in resolutie_keuze else "~100 × 100 km"
+    if st.button("🔄 Ververs nu", key="ververs_raster_6d"):
+        laad_migratie_rasterdata_6daags.clear()
+        st.rerun()
 
     with st.spinner("Weervoorspelling ophalen voor 6-daags migratieraster — even geduld..."):
-        days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag = laad_migratie_rasterdata_6daags(
-            lat_step=_lat_step, lon_step=_lon_step
-        )
+        days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag = laad_migratie_rasterdata_6daags()
 
     n_punten = len(days_data[0]) if days_data else 0
     st.caption(
         f"⏱️ Gegevens opgehaald om **{opgehaald_om} UTC** — "
-        f"{n_punten} rasterpunten per dag (zee, VK, Ierland & Man-eiland uitgesloten) · "
-        f"resolutie {_res_label} ({_lat_step}° × {_lon_step}°)"
+        f"{n_punten} rasterpunten per dag (~100 × 100 km, kustzeepunten inbegrepen, VK/Ierland/Man-eiland uitgesloten)"
     )
 
     # Gedeelde kleurlegende (eenmalig boven alle 6 kaarten)
@@ -1563,25 +1593,25 @@ with tabs[2]:
         """
         <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;
                     margin-bottom:8px;font-size:13px;">
-          <span><span style="background:#00ff00;padding:2px 8px;border-radius:4px;
-                color:black;">●</span>&nbsp;Uitstekend ≥ 90</span>
-          <span><span style="background:#33ff00;padding:2px 8px;border-radius:4px;
-                color:black;">●</span>&nbsp;Zeer goed 80–90</span>
-          <span><span style="background:#65ff00;padding:2px 8px;border-radius:4px;
-                color:black;">●</span>&nbsp;Goed 70–80</span>
-          <span><span style="background:#99ff00;padding:2px 8px;border-radius:4px;
-                color:black;">●</span>&nbsp;Vrij goed 60–70</span>
-          <span><span style="background:#cbff00;padding:2px 8px;border-radius:4px;
-                color:black;">●</span>&nbsp;Redelijk 50–60</span>
-          <span><span style="background:#ffff00;padding:2px 8px;border-radius:4px;
-                color:black;">●</span>&nbsp;Matig 40–50</span>
-          <span><span style="background:#ffcc00;padding:2px 8px;border-radius:4px;
-                color:black;">●</span>&nbsp;Ongunstig 30–40</span>
-          <span><span style="background:#ff9900;padding:2px 8px;border-radius:4px;
-                color:black;">●</span>&nbsp;Slecht 20–30</span>
-          <span><span style="background:#ff6600;padding:2px 8px;border-radius:4px;
+          <span><span style="background:#008c00;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Uitstekend ≥ 90</span>
+          <span><span style="background:#2a8c00;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Zeer goed 80–90</span>
+          <span><span style="background:#468c00;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Goed 70–80</span>
+          <span><span style="background:#628c00;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Vrij goed 60–70</span>
+          <span><span style="background:#7e8c00;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Redelijk 50–60</span>
+          <span><span style="background:#8c7e00;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Matig 40–50</span>
+          <span><span style="background:#8c6200;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Ongunstig 30–40</span>
+          <span><span style="background:#8c4600;padding:2px 8px;border-radius:4px;
+                color:white;">●</span>&nbsp;Slecht 20–30</span>
+          <span><span style="background:#8c2a00;padding:2px 8px;border-radius:4px;
                 color:white;">●</span>&nbsp;Zeer slecht 10–20</span>
-          <span><span style="background:#ff0000;padding:2px 8px;border-radius:4px;
+          <span><span style="background:#8c0000;padding:2px 8px;border-radius:4px;
                 color:white;">●</span>&nbsp;Verwaarloosbaar &lt; 10</span>
         </div>
         """,
@@ -1663,6 +1693,7 @@ with tabs[2]:
                 if selected_uur is not None
                 else f"Migratiecode: {score_pct}/100 (daggemiddelde)"
             )
+            is_zee = punt.get("zee_grenspunt", False)
             weerdisplay_note = (
                 f"Weerdisplay: {selected_uur:02d}:00 UTC"
                 if selected_uur is not None
@@ -1670,7 +1701,8 @@ with tabs[2]:
             )
             popup_html = (
                 f"<div style='font-size:13px;min-width:210px;'>"
-                f"<b>{score_info}</b><br>"
+                + (f"<b style='color:#0055a4;'>🌊 Kustzeepunt</b><br>" if is_zee else "")
+                + f"<b>{score_info}</b><br>"
                 f"<b>Klasse: {klasse_lbl}</b><br>"
                 f"📍 {punt['latitude']}°N, {punt['longitude']}°E<br>"
                 f"🧭 Wind: {disp_wind_richting} {disp_wind_kracht} Bf<br>"
@@ -1693,7 +1725,7 @@ with tabs[2]:
                 + "</div>"
             )
             tooltip_tekst = (
-                f"{dag_label} | {score_pct}/100 ({klasse_lbl}) "
+                f"{'🌊 ' if is_zee else ''}{dag_label} | {score_pct}/100 ({klasse_lbl}) "
                 f"| {punt['latitude']}°N {punt['longitude']}°E "
                 f"| {disp_wind_richting} {disp_wind_kracht} Bf "
                 f"| {disp_druk} hPa | ✈️ {vh_lbl}"
@@ -1704,8 +1736,8 @@ with tabs[2]:
                 color=kleur,
                 fill=True,
                 fill_color=kleur,
-                fill_opacity=0.82,
-                weight=1,
+                fill_opacity=0.50 if is_zee else 0.82,
+                weight=2 if is_zee else 1,
                 popup=folium.Popup(popup_html, max_width=260),
                 tooltip=tooltip_tekst,
             ).add_to(m_dag)

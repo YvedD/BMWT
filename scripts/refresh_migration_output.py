@@ -141,7 +141,14 @@ def is_geldig_punt(lat: float, lon: float) -> bool:
 # ---------------------------------------------------------------------------
 
 def build_grid_points() -> list[dict]:
-    """Return land-only grid points anchored at Tarifa, covering Western Europe."""
+    """Return land grid points + coastal sea boundary points anchored at Tarifa.
+
+    Sea boundary points are grid cells in the ocean that directly border
+    (in any of the 8 compass directions) at least one valid land grid point.
+    They are included so that coastal-zone weather data is available for
+    the migration score computation.  UK, Ireland and Isle of Man remain
+    excluded throughout.
+    """
     lats: set[float] = set()
     n = 0
     while True:
@@ -178,11 +185,35 @@ def build_grid_points() -> list[dict]:
             lons.add(lon)
         n -= 1
 
+    # First pass: collect all valid land points
+    land_set: set[tuple[float, float]] = set()
+    for lat in lats:
+        for lon in lons:
+            if is_geldig_punt(lat, lon):
+                land_set.add((lat, lon))
+
+    # Second pass: build final list with land + sea boundary points
     points = []
     for lat in sorted(lats):
         for lon in sorted(lons):
-            if is_geldig_punt(lat, lon):
-                points.append({"latitude": lat, "longitude": lon})
+            if (lat, lon) in land_set:
+                points.append({"latitude": lat, "longitude": lon, "zee_grenspunt": False})
+            else:
+                # Include sea point if it borders at least one valid land point
+                borders_land = False
+                for dlat in (-1.0, 0.0, 1.0):
+                    for dlon in (-1.0, 0.0, 1.0):
+                        if dlat == 0.0 and dlon == 0.0:
+                            continue
+                        nlat = round(lat + dlat * LAT_STEP, 1)
+                        nlon = round(lon + dlon * LON_STEP, 1)
+                        if (nlat, nlon) in land_set:
+                            borders_land = True
+                            break
+                    if borders_land:
+                        break
+                if borders_land:
+                    points.append({"latitude": lat, "longitude": lon, "zee_grenspunt": True})
     return points
 
 
@@ -563,9 +594,10 @@ def process_point(point: dict) -> dict:
             "weather":      weather,
         })
     return {
-        "latitude":  lat,
-        "longitude": lon,
-        "days":      days,
+        "latitude":     lat,
+        "longitude":    lon,
+        "zee_grenspunt": point.get("zee_grenspunt", False),
+        "days":         days,
     }
 
 
