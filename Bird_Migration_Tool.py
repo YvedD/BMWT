@@ -2064,7 +2064,7 @@ fallback = klimatologisch maandgemiddelde Zuidelijke Noordzee.*
                 f"<b>{_naam}</b><br>"
                 f"{'<b style=\"color:#cc0000;\">🚩 Zeebries verwacht</b>' if _actief else '<b style=\"color:#00aa00;\">✅ Geen zeebries</b>'}<br>"
                 f"📍 {_zb_punt['latitude']}°N, {_zb_punt['longitude']}°E<br>"
-                + (f"⏰ {_start_h:02d}:00–{_stop_h:02d}:00 UTC ({_n_uren}u)<br>" if _actief and _start_h is not None else "")
+                + (f"⏰ {_start_h:02d}:00–{_stop_h:02d}:00 UTC ({_n_uren}u)<br>" if _actief and _start_h is not None and _stop_h is not None else "")
                 + (f"🌡️ Max ΔT (land−zee): <b>{_dt_max:.1f} °C</b><br>" if _dt_max > 0 else "")
                 + (f"🌊 SST: {_sst:.1f} °C"
                    + (" ⚠️ <i>(klimatol.)</i>" if _sst_is_fallback else "")
@@ -2073,7 +2073,7 @@ fallback = klimatologisch maandgemiddelde Zuidelijke Noordzee.*
             )
             _tooltip = (
                 f"{'🚩 ZEEBRIES — ' if _actief else '✅ '}{_naam}"
-                + (f" | {_start_h:02d}h–{_stop_h:02d}h UTC" if _actief and _start_h is not None else "")
+                + (f" | {_start_h:02d}h–{_stop_h:02d}h UTC" if _actief and _start_h is not None and _stop_h is not None else "")
             )
 
             folium.Marker(
