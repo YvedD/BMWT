@@ -7,10 +7,17 @@ Western Europe (anchored on Tarifa, Spain) and computes a migration-
 favourability score for each grid point per day.
 
 Grid points in the sea or in the United Kingdom are excluded automatically
-via TimezoneFinder.
+via TimezoneFinder.  Coastal sea-boundary points (adjacent to at least one
+valid land grid point) are included as 'zee_grenspunt' for offshore weather.
 
-Score  0.0 = extremely unfavourable (BLUE)
-Score  1.0 = extremely favourable   (RED)
+Score  0.0 = extremely unfavourable
+Score  1.0 = extremely favourable
+
+NOTE – Zeebries (sea breeze) detection is NOT included in this script.
+  The sea breeze feature uses a separate fine-resolution coastal grid
+  (~10 × 10 km along BE/NL/N-FR coast) and the Open-Meteo Marine API for
+  SST data.  It is computed live in the Streamlit app (Bird_Migration_Tool.py,
+  laad_zeebries_kustdata / detecteer_zeebries_uur) with its own 30-min cache.
 
 Run by the GitHub Actions workflow every 30 minutes.
 Output: data/migration/latest.json

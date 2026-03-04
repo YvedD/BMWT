@@ -318,6 +318,35 @@ _UITGESLOTEN_TIJDZONES = frozenset({
     "Europe/Isle_of_Man",  # Man-eiland
 })
 
+# === ZEEBRIES KUSTDETECTOR (~10 km fijngrid langs BE/NL/N-FR kust) ===
+# Zeebries = onshore wind vanuit zee die ontstaat bij sterke opwarming van het land.
+# Reikt slechts 5–15 km landinwaarts en is een echte migratie-stopper aan de kust.
+ZEEBRIES_LAT_MIN             = 50.4   # Pas-de-Calais / Noord-Frankrijk
+ZEEBRIES_LAT_MAX             = 53.5   # Noord-Nederland / Waddengebied
+ZEEBRIES_LON_MIN             =  1.0   # West (Kanaal / Noordzeekust begin)
+ZEEBRIES_LON_MAX             =  5.5   # ~50 km landinwaarts (Oost)
+ZEEBRIES_LAT_STEP            =  0.10  # ≈ 11 km per stap
+ZEEBRIES_LON_STEP            =  0.15  # ≈ 10 km per stap op 52°N
+ZEEBRIES_HORIZON_DAYS        =  6     # aantal voorspellingsdagen
+ZEEBRIES_MAX_OFFSHORE_STAPPEN =  6    # max stappen westwaarts om zeepunt te vinden (≈ 60 km)
+ZEEBRIES_OFFSHORE_FALLBACK_GR =  1.0  # fallback afstand (graden) als geen zeepunt gevonden
+ZEEBRIES_MAP_CENTER_LAT      = 52.0   # centrum zeebries-kaart (breedtegraad)
+ZEEBRIES_MAP_CENTER_LON      =  3.5   # centrum zeebries-kaart (lengtegraad)
+ZEEBRIES_MAP_ZOOM            =  7     # initieel zoomniveau zeebries-kaart
+
+# Drempelwaarden zeebries-detectie (wetenschappelijk onderbouwd)
+ZEEBRIES_DT_DREMPEL    =  4.0   # °C: land − zee temp. (ΔT ≥ 4°C → zeebries mogelijk)
+ZEEBRIES_WIND_MAX_KMH  = 28.0   # km/h ≈ 3 Bf (sterkere synoptische wind onderdrukt zeebries)
+ZEEBRIES_BEWOLKING_MAX = 60     # % bewolking (meer bewolking → minder opwarming land)
+ZEEBRIES_UUR_BEGIN     = 10     # UTC: zeebries begint niet voor 10u (lokaal 11-12u zomertijd)
+ZEEBRIES_UUR_EIND      = 20     # UTC: zeebries verdwijnt na zonsondergang (~20u UTC zomer)
+
+# Fallback SST (°C) per maand voor de Zuidelijke Noordzee (als Marine API niet beschikbaar)
+_NOORDZEE_SST_FALLBACK = {
+    1: 6.0, 2: 5.5, 3: 6.0,  4:  8.0, 5: 11.0, 6: 14.0,
+    7: 17.0, 8: 17.5, 9: 16.0, 10: 13.0, 11: 10.0, 12: 7.5,
+}
+
 
 def migratie_is_geldig_punt(lat: float, lon: float) -> bool:
     """Return True als het rasterpunt op land valt en niet in een uitgesloten gebied.
@@ -414,6 +443,270 @@ def migratie_genereer_rasterpunten(lat_step: float = None, lon_step: float = Non
                 if is_grens:
                     punten.append({"latitude": lat, "longitude": lon, "zee_grenspunt": True})
     return punten
+
+
+# ---------------------------------------------------------------------------
+# Zeebries kustdetector — fijngrid + Open-Meteo Marine API
+# ---------------------------------------------------------------------------
+
+def _genereer_zeebries_kustpunten() -> list[dict]:
+    """Genereer fijn kustgrid (~0.1° ≈ 10 km) langs BE/NL/N-FR kust.
+
+    Retourneert uitsluitend landpunten die grenzen aan een zeepunt (kustpunten)
+    binnen de zone ZEEBRIES_LAT/LON_MIN/MAX.  Elk punt krijgt de coördinaten
+    van het dichtstbijzijnde zeepunt mee, dat gebruikt wordt voor de Marine-
+    API (SST-opvraging).
+
+    Uitsluitingscriteria: zelfde tijdzone-filter als hoofdraster (GB/IE/IoM).
+    """
+    # --- Genereer rasterpunten ---
+    lats: list[float] = []
+    lat = ZEEBRIES_LAT_MIN
+    while lat <= ZEEBRIES_LAT_MAX + 1e-9:
+        lats.append(round(lat, 2))
+        lat = round(lat + ZEEBRIES_LAT_STEP, 2)
+
+    lons: list[float] = []
+    lon = ZEEBRIES_LON_MIN
+    while lon <= ZEEBRIES_LON_MAX + 1e-9:
+        lons.append(round(lon, 2))
+        lon = round(lon + ZEEBRIES_LON_STEP, 2)
+
+    # --- Classificeer elk punt: land / zee / uitgesloten ---
+    land_set: set[tuple[float, float]] = set()
+    zee_set:  set[tuple[float, float]] = set()
+    for _lat in lats:
+        for _lon in lons:
+            tz = _TF.timezone_at(lat=_lat, lng=_lon)
+            if tz is None or tz.startswith("Etc/"):
+                zee_set.add((_lat, _lon))
+            elif tz not in _UITGESLOTEN_TIJDZONES:
+                land_set.add((_lat, _lon))
+
+    # --- Selecteer kustlandpunten (hebben ten minste 1 direct zeebuur) ---
+    kustpunten: list[dict] = []
+    for _lat in sorted(lats):
+        for _lon in sorted(lons):
+            if (_lat, _lon) not in land_set:
+                continue
+
+            # Zoek dichtst bij zeepunt: eerst richting west (offshore), dan 8 richtingen
+            zee_punt: tuple[float, float] | None = None
+            for steps in range(1, ZEEBRIES_MAX_OFFSHORE_STAPPEN + 1):
+                candidate = (_lat, round(_lon - steps * ZEEBRIES_LON_STEP, 2))
+                if candidate in zee_set:
+                    zee_punt = candidate
+                    break
+
+            if zee_punt is None:                 # 8-richting fallback
+                for d_lat, d_lon in [(0, -1), (-1, -1), (1, -1),
+                                     (0, 1), (-1, 1), (1, 1),
+                                     (-1, 0), (1, 0)]:
+                    candidate = (
+                        round(_lat + d_lat * ZEEBRIES_LAT_STEP, 2),
+                        round(_lon + d_lon * ZEEBRIES_LON_STEP, 2),
+                    )
+                    if candidate in zee_set:
+                        zee_punt = candidate
+                        break
+
+            if zee_punt is None:                 # Vaste offshore fallback
+                zee_punt = (_lat, round(max(ZEEBRIES_LON_MIN - ZEEBRIES_OFFSHORE_FALLBACK_GR, _lon - ZEEBRIES_OFFSHORE_FALLBACK_GR), 2))
+
+            # Alleen als zeepunt binnen 1 directe buurstap ligt → echte kustlijn
+            is_direct_kust = any(
+                (round(_lat + d_lat * ZEEBRIES_LAT_STEP, 2),
+                 round(_lon + d_lon * ZEEBRIES_LON_STEP, 2)) in zee_set
+                for d_lat, d_lon in [(-1, -1), (-1, 0), (-1, 1),
+                                     (0,  -1),            (0,  1),
+                                     (1,  -1), (1,  0),   (1,  1)]
+            )
+            if not is_direct_kust:
+                continue
+
+            kustpunten.append({
+                "latitude":  _lat,
+                "longitude": _lon,
+                "zee_lat":   zee_punt[0],
+                "zee_lon":   zee_punt[1],
+            })
+
+    return kustpunten
+
+
+def _haal_zeebries_voorspelling(punt: dict) -> dict:
+    """Haal landweer (Open-Meteo forecast) + SST (Open-Meteo Marine) op voor één kustpunt.
+
+    Retourneert {"hourly": dict|None, "sst": list|None}.
+    Probeert elk endpoint éénmalig; falen is non-fataal.
+    """
+    land_params = {
+        "latitude":     punt["latitude"],
+        "longitude":    punt["longitude"],
+        "hourly":       "temperature_2m,wind_speed_10m,wind_direction_10m,cloud_cover",
+        "timezone":     "UTC",
+        "forecast_days": ZEEBRIES_HORIZON_DAYS,
+    }
+    marine_params = {
+        "latitude":     punt["zee_lat"],
+        "longitude":    punt["zee_lon"],
+        "hourly":       "sea_surface_temperature",
+        "timezone":     "UTC",
+        "forecast_days": ZEEBRIES_HORIZON_DAYS,
+    }
+    hourly_land = None
+    sst_list    = None
+
+    try:
+        r = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params=land_params, timeout=20,
+        )
+        if r.status_code == 200:
+            hourly_land = r.json().get("hourly")
+    except Exception:
+        pass
+
+    try:
+        r = requests.get(
+            "https://marine-api.open-meteo.com/v1/marine",
+            params=marine_params, timeout=20,
+        )
+        if r.status_code == 200:
+            sst_list = r.json().get("hourly", {}).get("sea_surface_temperature")
+    except Exception:
+        pass
+
+    return {"hourly": hourly_land, "sst": sst_list}
+
+
+def detecteer_zeebries_uur(
+    temp_land: float,
+    sst: float,
+    wind_speed_kmh: float,
+    cloud_cover_pct: float,
+    hour_utc: int,
+) -> bool:
+    """Voorspel of een zeebries optreedt voor dit uur.
+
+    Zeebries-condities (wetenschappelijke drempelwaarden):
+      - Land warmer dan zee: ΔT ≥ ZEEBRIES_DT_DREMPEL °C
+      - Synoptische wind zwak genoeg: < ZEEBRIES_WIND_MAX_KMH km/h
+      - Niet te bewolkt (zonneschijn verwarmt land): bewolking < ZEEBRIES_BEWOLKING_MAX %
+      - Dagtijd (UTC): ZEEBRIES_UUR_BEGIN ≤ uur ≤ ZEEBRIES_UUR_EIND
+
+    Noot: windrichting wordt NIET gecontroleerd — de zeebries CREËERT de onshore wind.
+    Wat we voorspellen is de *conditie* voor zeebries-vorming, niet het gevolg.
+    """
+    if temp_land - sst < ZEEBRIES_DT_DREMPEL:
+        return False
+    if wind_speed_kmh >= ZEEBRIES_WIND_MAX_KMH:
+        return False
+    if cloud_cover_pct > ZEEBRIES_BEWOLKING_MAX:
+        return False
+    if not (ZEEBRIES_UUR_BEGIN <= hour_utc <= ZEEBRIES_UUR_EIND):
+        return False
+    return True
+
+
+@st.cache_data(ttl=1800)
+def laad_zeebries_kustdata() -> tuple[list[list[dict]], list[str], str]:
+    """Laad zeebries-voorspelling voor het fijngrid (~10 km) langs BE/NL/N-FR kust.
+
+    Retourneert (kustpunten_per_dag, dag_datums, opgehaald_om):
+      - kustpunten_per_dag[dag_idx]: lijst van punt-dicts per dag
+      - Elk punt-dict bevat: lat, lon, zeebries_uren (bool[24]),
+        delta_t_uren (float[24]), sst_middag, zeebries_actief,
+        zeebries_start/stop/n_uren.
+
+    Gebruikt de Open-Meteo Marine API voor SST.  Als die niet beschikbaar is,
+    valt het systeem terug op klimatologische SST-waarden voor de Zuidelijke
+    Noordzee.
+    """
+    sst_fallback = _NOORDZEE_SST_FALLBACK[date.today().month]
+    punten = _genereer_zeebries_kustpunten()
+    vandaag = date.today()
+    dag_datums = [
+        _dag_label_nl(vandaag + timedelta(days=i))
+        for i in range(ZEEBRIES_HORIZON_DAYS)
+    ]
+
+    def verwerk_kustpunt(punt: dict) -> list[dict]:
+        data        = _haal_zeebries_voorspelling(punt)
+        hourly_land = data.get("hourly")
+        sst_lijst   = data.get("sst")
+
+        dag_dicts: list[dict] = []
+        for dag_idx in range(ZEEBRIES_HORIZON_DAYS):
+            uur_flags:     list[bool]  = []
+            delta_t_uren:  list[float] = []
+
+            for uur in range(24):
+                h_idx = dag_idx * 24 + uur
+
+                # --- Landweer ---
+                t_land = ws = cc = None
+                if hourly_land:
+                    try:
+                        t_raw = hourly_land["temperature_2m"][h_idx]
+                        w_raw = hourly_land["wind_speed_10m"][h_idx]
+                        c_raw = hourly_land["cloud_cover"][h_idx]
+                        if None not in (t_raw, w_raw, c_raw):
+                            t_land = float(t_raw)
+                            ws     = float(w_raw)
+                            cc     = float(c_raw)
+                    except (IndexError, KeyError, TypeError):
+                        pass
+
+                # --- SST ---
+                sst = None
+                if sst_lijst and h_idx < len(sst_lijst) and sst_lijst[h_idx] is not None:
+                    sst = float(sst_lijst[h_idx])
+                if sst is None:
+                    sst = sst_fallback   # klimatologische fallback
+
+                # --- Zeebries-detectie ---
+                if t_land is not None and ws is not None and cc is not None:
+                    dt  = round(t_land - sst, 1)
+                    zb  = detecteer_zeebries_uur(t_land, sst, ws, cc, uur)
+                else:
+                    dt  = 0.0
+                    zb  = False
+
+                delta_t_uren.append(dt)
+                uur_flags.append(zb)
+
+            uren_actief = [u for u, f in enumerate(uur_flags) if f]
+
+            # SST bij middag van deze dag
+            middag_idx = dag_idx * 24 + 12
+            sst_middag = None
+            if sst_lijst and middag_idx < len(sst_lijst) and sst_lijst[middag_idx] is not None:
+                sst_middag = round(float(sst_lijst[middag_idx]), 1)
+            if sst_middag is None:
+                sst_middag = sst_fallback
+
+            dag_dicts.append({
+                "latitude":        punt["latitude"],
+                "longitude":       punt["longitude"],
+                "zeebries_uren":   uur_flags,
+                "delta_t_uren":    delta_t_uren,
+                "sst_middag":      sst_middag,
+                "zeebries_actief": len(uren_actief) > 0,
+                "zeebries_start":  min(uren_actief) if uren_actief else None,
+                "zeebries_stop":   max(uren_actief) if uren_actief else None,
+                "zeebries_n_uren": len(uren_actief),
+            })
+        return dag_dicts
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        alle_resultaten = list(executor.map(verwerk_kustpunt, punten))
+    for dag_dicts in alle_resultaten:
+        for dag_idx, dag_punt in enumerate(dag_dicts):
+            kustpunten_per_dag[dag_idx].append(dag_punt)
+
+    opgehaald_om = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    return kustpunten_per_dag, dag_datums, opgehaald_om
 
 
 def migratie_bereken_score(weer):
@@ -1758,6 +2051,110 @@ with tabs[2]:
             )
 
         st.divider()
+
+    # -----------------------------------------------------------------------
+    # Zeebries kustdetector — fijngrid BE/NL/N-FR kust (~10 km resolutie)
+    # -----------------------------------------------------------------------
+    st.divider()
+    with st.expander("🌬️ Zeebries kustdetector (BE/NL/N-FR — fijngrid ~10 km)", expanded=False):
+        st.markdown("""
+**Zeebries** ontstaat wanneer het land sterker opwarmt dan de zee
+(ΔT ≥ 4 °C) bij zwakke synoptische wind (< 3 Bf) en niet te bewolkte hemel.
+De zeebries reikt slechts **5–15 km landinwaarts** en vormt een echte
+**migratie-stopper** voor vogels die langs de Noordzeekust trekken.
+
+- 🔵 **Blauw** = zeebries waarschijnlijk (grootte cirkel = duur in uren)
+- ⬜ **Grijs** = geen zeebries verwacht
+- 🟡 **Geel omrand** = fallback SST (Marine API niet bereikbaar)
+
+*Methode: ΔT = prognose T_land − SST.  SST via Open-Meteo Marine API;
+fallback = klimatologisch maandgemiddelde Zuidelijke Noordzee.*
+        """)
+
+        col_zb_btn, col_zb_dag = st.columns([1, 3])
+        with col_zb_btn:
+            if st.button("🔄 Ververs", key="ververs_zeebries"):
+                laad_zeebries_kustdata.clear()
+                st.rerun()
+
+        with st.spinner("Zeebries-voorspelling laden (Marine API + landweer)..."):
+            _zb_per_dag, _zb_datums, _zb_opgehaald_om = laad_zeebries_kustdata()
+
+        with col_zb_dag:
+            _zb_dag_opties = [f"Vandaag ({_zb_datums[0]})"] + [
+                f"Dag +{i} ({_zb_datums[i]})" for i in range(1, ZEEBRIES_HORIZON_DAYS)
+            ]
+            _zb_keuze = st.selectbox("Dag:", _zb_dag_opties, key="zeebries_dag")
+            _zb_dag_idx = _zb_dag_opties.index(_zb_keuze)
+
+        _zb_dagdata = _zb_per_dag[_zb_dag_idx]
+        _zb_n_actief = sum(1 for p in _zb_dagdata if p["zeebries_actief"])
+        _zb_marine_ok = any(
+            p["sst_middag"] != _NOORDZEE_SST_FALLBACK.get(date.today().month)
+            for p in _zb_dagdata
+        )
+        st.caption(
+            f"⏱️ Data opgehaald: **{_zb_opgehaald_om} UTC** — "
+            f"{len(_zb_dagdata)} kustpunten, {_zb_n_actief} met zeebries verwacht — "
+            + ("🌊 Marine API: OK" if _zb_marine_ok else "⚠️ Marine API niet bereikbaar (klimatologische SST gebruikt)")
+        )
+
+        # Zeebries folium-kaart (ingezoomd op kustzone)
+        m_zeebries = folium.Map(
+            location=[ZEEBRIES_MAP_CENTER_LAT, ZEEBRIES_MAP_CENTER_LON],
+            zoom_start=ZEEBRIES_MAP_ZOOM,
+            tiles="CartoDB positron"
+        )
+
+        for _zb_punt in _zb_dagdata:
+            _actief   = _zb_punt["zeebries_actief"]
+            _n_uren   = _zb_punt["zeebries_n_uren"]
+            _start_h  = _zb_punt.get("zeebries_start")
+            _stop_h   = _zb_punt.get("zeebries_stop")
+            _sst      = _zb_punt.get("sst_middag")
+            _dt_max   = max(_zb_punt["delta_t_uren"]) if _zb_punt["delta_t_uren"] else 0.0
+            _sst_is_fallback = (_sst == _NOORDZEE_SST_FALLBACK.get(date.today().month))
+
+            _kleur_fill  = "#0066cc" if _actief else "#888888"
+            _kleur_rand  = "#ffcc00" if _sst_is_fallback else _kleur_fill
+            _radius      = max(4, min(10, _n_uren)) if _actief else 3
+            _opacity     = 0.70 if _actief else 0.25
+
+            _popup_html = (
+                f"<div style='font-size:12px;min-width:190px;'>"
+                f"{'<b style=\"color:#0066cc;\">🌬️ Zeebries verwacht</b>' if _actief else '✅ Geen zeebries'}<br>"
+                f"📍 {_zb_punt['latitude']}°N, {_zb_punt['longitude']}°E<br>"
+                + (f"⏰ {_start_h:02d}:00–{_stop_h:02d}:00 UTC ({_n_uren}u)<br>" if _actief else "")
+                + (f"🌡️ Max ΔT (land−zee): <b>{_dt_max:.1f} °C</b><br>" if _dt_max > 0 else "")
+                + (f"🌊 SST: {_sst:.1f} °C"
+                   + (" ⚠️ <i>(klimatol.)</i>" if _sst_is_fallback else "")
+                   + "<br>" if _sst is not None else "")
+                + "</div>"
+            )
+            _tooltip = (
+                f"{'🌬️ ZEEBRIES ' if _actief else ''}"
+                f"{_zb_punt['latitude']}°N {_zb_punt['longitude']}°E"
+                + (f" | {_start_h:02d}h–{_stop_h:02d}h UTC" if _actief and _start_h is not None else "")
+            )
+
+            folium.CircleMarker(
+                location=[_zb_punt["latitude"], _zb_punt["longitude"]],
+                radius=_radius,
+                color=_kleur_rand,
+                fill=True,
+                fill_color=_kleur_fill,
+                fill_opacity=_opacity,
+                weight=2 if _sst_is_fallback else 1,
+                popup=folium.Popup(_popup_html, max_width=220),
+                tooltip=_tooltip,
+            ).add_to(m_zeebries)
+
+        st_folium(
+            m_zeebries, height=480,
+            returned_objects=[],
+            use_container_width=True,
+            key="kaart_zeebries",
+        )
 
 
 with tabs[3]:
