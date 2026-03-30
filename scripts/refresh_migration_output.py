@@ -77,6 +77,7 @@ BENE_WIND_FALLOFF_E = 135.0   # reach 0 at this many degrees CCW past ZO (= near
 # Beaufort speed thresholds (km/h)
 BENE_WIND_SPEED_1BF =  1.0    # Bf 1 lower bound
 BENE_WIND_SPEED_3BF = 12.0    # Bf 3 lower bound (optimal range start)
+BENE_WIND_SPEED_3BF_MAX = 20.0  # Bf 3 upper bound
 BENE_WIND_SPEED_5BF = 38.0    # Bf 5 upper bound (optimal range end)
 BENE_WIND_SPEED_7BF = 50.0    # Bf 7 lower bound (migration suppressed)
 
@@ -94,8 +95,8 @@ WIND_DIRECTION_LABELS = (
     "Z", "ZZW", "ZW", "WZW", "W", "WNW", "NW", "NNW",
 )
 SPRING_ZERO_WIND_ALL_SPEEDS = frozenset({"W", "NW", "WNW", "NNW", "WZW"})
-SPRING_ZERO_WIND_ABOVE_3BF = frozenset({"ZW", "N", "NNO"})
-SPRING_MAX_WIND_BELOW_3BF = frozenset({"ZW", "ZZW"})
+SPRING_ZERO_WIND_STRICTLY_ABOVE_3BF = frozenset({"ZW", "N", "NNO"})
+SPRING_MAX_WIND_STRICTLY_BELOW_3BF = frozenset({"ZW", "ZZW"})
 
 # ---------------------------------------------------------------------------
 # Supply corridor: upstream migration availability from the south
@@ -255,9 +256,9 @@ def bene_spring_wind_override(direction_deg: float, speed_kmh: float) -> str | N
     direction = wind_direction_label(direction_deg)
     if direction in SPRING_ZERO_WIND_ALL_SPEEDS:
         return "zero"
-    if direction in SPRING_ZERO_WIND_ABOVE_3BF and speed_kmh > 20.0:
+    if direction in SPRING_ZERO_WIND_STRICTLY_ABOVE_3BF and speed_kmh > BENE_WIND_SPEED_3BF_MAX:
         return "zero"
-    if direction in SPRING_MAX_WIND_BELOW_3BF and speed_kmh < BENE_WIND_SPEED_3BF:
+    if direction in SPRING_MAX_WIND_STRICTLY_BELOW_3BF and speed_kmh < BENE_WIND_SPEED_3BF:
         return "max"
     return None
 

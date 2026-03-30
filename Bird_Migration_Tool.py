@@ -119,11 +119,11 @@ def graden_naar_windrichting(graden):
     return richtingen[index]
 
 # Functie om windsnelheid in km/h naar Beaufort te converteren
-_BEAUFORT_GRENZEN_KMH = [1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118]
+_BEAUFORT_DREMPELS_KMH = [1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118]
 
 
 def _kmh_naar_beaufort_klasse(kmh):
-    for i, grens in enumerate(_BEAUFORT_GRENZEN_KMH):
+    for i, grens in enumerate(_BEAUFORT_DREMPELS_KMH):
         if kmh <= grens:
             return i
     return 12
@@ -279,6 +279,7 @@ BENE_WIND_FALLOFF_E = 135.0   # graden: score daalt naar 0 bij N (0°, 135° ter
 # Windkrachtbereiken voor BE/NL (Beaufort → km/h)
 BENE_WIND_SPEED_1BF =  1.0    # Bf 1 ondergrens
 BENE_WIND_SPEED_3BF = 12.0    # Bf 3 ondergrens (= optimum ondergrens)
+BENE_WIND_SPEED_3BF_MAX = 20.0  # Bf 3 bovengrens
 BENE_WIND_SPEED_5BF = 38.0    # Bf 5 bovengrens (= optimum bovengrens)
 BENE_WIND_SPEED_7BF = 50.0    # Bf 7 ondergrens (= trek grotendeels afgeremd)
 
@@ -291,8 +292,8 @@ WIND_SEA_BONUS      = 0.4     # bonusmultiplicator voor de West-component bij >6
 WIND_NW_W_DIR_MIN   = 225.0   # ZW (ondergrens)
 WIND_NW_W_DIR_MAX   = 330.0   # NNW (bovengrens)
 VOORJAAR_WIND_NUL_ALLE_SNELHEDEN = frozenset({"W", "NW", "WNW", "NNW", "WZW"})
-VOORJAAR_WIND_NUL_BOVEN_3BF = frozenset({"ZW", "N", "NNO"})
-VOORJAAR_WIND_MAX_ONDER_3BF = frozenset({"ZW", "ZZW"})
+VOORJAAR_WIND_NUL_STRIKT_BOVEN_3BF = frozenset({"ZW", "N", "NNO"})
+VOORJAAR_WIND_MAX_STRIKT_ONDER_3BF = frozenset({"ZW", "ZZW"})
 
 # ---------------------------------------------------------------------------
 # Aanvoercorridor: migratieaanvoer vanuit het zuiden naar BE/NL
@@ -985,9 +986,9 @@ def _voorjaar_bene_wind_override(wind_richting: float, wind_kracht: float) -> st
     richting = graden_naar_windrichting(wind_richting)
     if richting in VOORJAAR_WIND_NUL_ALLE_SNELHEDEN:
         return "zero"
-    if richting in VOORJAAR_WIND_NUL_BOVEN_3BF and wind_kracht > 20.0:
+    if richting in VOORJAAR_WIND_NUL_STRIKT_BOVEN_3BF and wind_kracht > BENE_WIND_SPEED_3BF_MAX:
         return "zero"
-    if richting in VOORJAAR_WIND_MAX_ONDER_3BF and wind_kracht < BENE_WIND_SPEED_3BF:
+    if richting in VOORJAAR_WIND_MAX_STRIKT_ONDER_3BF and wind_kracht < BENE_WIND_SPEED_3BF:
         return "max"
     return None
 
