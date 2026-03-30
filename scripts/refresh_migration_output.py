@@ -89,6 +89,14 @@ WIND_SEA_BONUS      = 0.4     # bonus multiplier for the west component when >6 
 WIND_NW_W_DIR_MIN   = 225.0   # SW (lower bound)
 WIND_NW_W_DIR_MAX   = 330.0   # NNW (upper bound)
 
+WIND_DIRECTION_LABELS = (
+    "N", "NNO", "NO", "ONO", "O", "OZO", "ZO", "ZZO",
+    "Z", "ZZW", "ZW", "WZW", "W", "WNW", "NW", "NNW",
+)
+SPRING_ZERO_WIND_ALL_SPEEDS = frozenset({"W", "NW", "WNW", "NNW", "WZW"})
+SPRING_ZERO_WIND_ABOVE_3BF = frozenset({"ZW", "N", "NNO"})
+SPRING_MAX_WIND_BELOW_3BF = frozenset({"ZW", "ZZW"})
+
 # ---------------------------------------------------------------------------
 # Supply corridor: upstream migration availability from the south
 # Science: migration is a pipeline — birds must first pass through Spain
@@ -239,6 +247,21 @@ def clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
 
 
+def wind_direction_label(degrees: float) -> str:
+    return WIND_DIRECTION_LABELS[round((degrees % 360.0) / 22.5) % 16]
+
+
+def bene_spring_wind_override(direction_deg: float, speed_kmh: float) -> str | None:
+    direction = wind_direction_label(direction_deg)
+    if direction in SPRING_ZERO_WIND_ALL_SPEEDS:
+        return "zero"
+    if direction in SPRING_ZERO_WIND_ABOVE_3BF and speed_kmh > 20.0:
+        return "zero"
+    if direction in SPRING_MAX_WIND_BELOW_3BF and speed_kmh < BENE_WIND_SPEED_3BF:
+        return "max"
+    return None
+
+
 def compute_migration_score(
     weather: dict | None,
     lat: float = 0.0,
@@ -289,44 +312,52 @@ def compute_migration_score(
     )
 
     if in_bene:
-        # Asymmetric directional score peaked at ZO (135°):
-        #   ZO (135°) > ZZO (157.5°) > OZO (112.5°) > Z (180°) > O (90°) > N/W ≈ 0
-        delta = ((wind_dir - BENE_WIND_OPT_DIR) + 180.0) % 360.0 - 180.0
-        if delta >= 0:
-            wind_dir_score = max(
-                0.0, math.cos(math.radians(delta * 180.0 / BENE_WIND_FALLOFF_S))
-            )
-        else:
-            wind_dir_score = max(
-                0.0, math.cos(math.radians(abs(delta) * 180.0 / BENE_WIND_FALLOFF_E))
-            )
-        # Tiered speed score: 3–5 Bf optimal > 1–3 Bf good > calm/storm
-        if wind_speed < BENE_WIND_SPEED_1BF:
-            wind_speed_score = 0.2
-        elif wind_speed < BENE_WIND_SPEED_3BF:
-            wind_speed_score = 0.2 + (
-                (wind_speed - BENE_WIND_SPEED_1BF)
-                / (BENE_WIND_SPEED_3BF - BENE_WIND_SPEED_1BF)
-            ) * 0.8
-        elif wind_speed <= BENE_WIND_SPEED_5BF:
+        override = bene_spring_wind_override(wind_dir, wind_speed)
+        if override == "zero":
+            wind_dir_score = 0.0
+            wind_speed_score = 0.0
+        elif override == "max":
+            wind_dir_score = 1.0
             wind_speed_score = 1.0
-        elif wind_speed < BENE_WIND_SPEED_7BF:
-            wind_speed_score = max(
-                0.3, 1.0 - (wind_speed - BENE_WIND_SPEED_5BF)
-                / (BENE_WIND_SPEED_7BF - BENE_WIND_SPEED_5BF) * 0.7
-            )
         else:
-            wind_speed_score = max(0.0, 0.3 - (wind_speed - BENE_WIND_SPEED_7BF) / 30.0)
+            # Asymmetric directional score peaked at ZO (135°):
+            #   ZO (135°) > ZZO (157.5°) > OZO (112.5°) > Z (180°) > O (90°) > N/W ≈ 0
+            delta = ((wind_dir - BENE_WIND_OPT_DIR) + 180.0) % 360.0 - 180.0
+            if delta >= 0:
+                wind_dir_score = max(
+                    0.0, math.cos(math.radians(delta * 180.0 / BENE_WIND_FALLOFF_S))
+                )
+            else:
+                wind_dir_score = max(
+                    0.0, math.cos(math.radians(abs(delta) * 180.0 / BENE_WIND_FALLOFF_E))
+                )
+            # Tiered speed score: 3–5 Bf optimal > 1–3 Bf good > calm/storm
+            if wind_speed < BENE_WIND_SPEED_1BF:
+                wind_speed_score = 0.2
+            elif wind_speed < BENE_WIND_SPEED_3BF:
+                wind_speed_score = 0.2 + (
+                    (wind_speed - BENE_WIND_SPEED_1BF)
+                    / (BENE_WIND_SPEED_3BF - BENE_WIND_SPEED_1BF)
+                ) * 0.8
+            elif wind_speed <= BENE_WIND_SPEED_5BF:
+                wind_speed_score = 1.0
+            elif wind_speed < BENE_WIND_SPEED_7BF:
+                wind_speed_score = max(
+                    0.3, 1.0 - (wind_speed - BENE_WIND_SPEED_5BF)
+                    / (BENE_WIND_SPEED_7BF - BENE_WIND_SPEED_5BF) * 0.7
+                )
+            else:
+                wind_speed_score = max(0.0, 0.3 - (wind_speed - BENE_WIND_SPEED_7BF) / 30.0)
 
-        # BE/NL west-component correction:
-        # West component lowers score; exception: strong NW/W (>6 Bf) →
-        # excellent sea migration (birds blown eastward over the North Sea).
-        west_component = max(0.0, -math.sin(math.radians(wind_dir)))
-        is_nw_w_strong = (WIND_NW_W_DIR_MIN <= wind_dir <= WIND_NW_W_DIR_MAX) and (wind_speed >= BENE_WIND_SPEED_7BF)
-        if is_nw_w_strong:
-            wind_dir_score = clamp(wind_dir_score + west_component * WIND_SEA_BONUS, 0.0, 1.0)
-        else:
-            wind_dir_score = max(0.0, wind_dir_score - WIND_WEST_PENALTY * west_component)
+            # BE/NL west-component correction:
+            # West component lowers score; exception: strong NW/W (>6 Bf) →
+            # excellent sea migration (birds blown eastward over the North Sea).
+            west_component = max(0.0, -math.sin(math.radians(wind_dir)))
+            is_nw_w_strong = (WIND_NW_W_DIR_MIN <= wind_dir <= WIND_NW_W_DIR_MAX) and (wind_speed >= BENE_WIND_SPEED_7BF)
+            if is_nw_w_strong:
+                wind_dir_score = clamp(wind_dir_score + west_component * WIND_SEA_BONUS, 0.0, 1.0)
+            else:
+                wind_dir_score = max(0.0, wind_dir_score - WIND_WEST_PENALTY * west_component)
     else:
         # General: south (180°) = tailwind → 1.0; north (0°/360°) → 0.0.
         # South component raises score; west component lowers score.
