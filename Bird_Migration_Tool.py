@@ -259,12 +259,12 @@ KAART_CENTER_LON = 4.8
 # Bounding box voor corridoranalyse BE/NL/DE
 CORRIDOR_LAT_MIN = 49.5
 CORRIDOR_LAT_MAX = 55.5
-CORRIDOR_LON_MIN = 2.5
-CORRIDOR_LON_MAX = 15.5
+CORRIDOR_LON_MIN = -9.5
+CORRIDOR_LON_MAX = 13.9
 
 # Bounding box voor BE/NL ZO-wind optimum (vogels gestuwd vanuit centraal-Frankrijk)
 # ZO-wind (135°, 3–5 Bf) is de ideale windrichting voor trek langs de Noordzeekust
-BENE_LAT_MIN        = 49.5    # zuidgrens BE
+BENE_LAT_MIN        = 43.0    # zuidgrens BE
 BENE_LAT_MAX        = 53.5    # noordgrens NL
 BENE_LON_MIN        = 2.0     # westkust BE/NL
 BENE_LON_MAX        = 8.0     # oost-NL / ruhr-gebied
