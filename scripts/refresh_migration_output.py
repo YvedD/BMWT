@@ -98,6 +98,23 @@ SPRING_ZERO_WIND_ALL_SPEEDS = frozenset({"W", "NW", "WNW", "NNW", "WZW"})
 SPRING_ZERO_WIND_STRICTLY_ABOVE_3BF = frozenset({"ZW", "N", "NNO"})
 SPRING_MAX_WIND_STRICTLY_BELOW_3BF = frozenset({"ZW", "ZZW"})
 
+# Score weights (must stay manually adjustable)
+SCORE_WEIGHT_WIND_DIRECTION = 0.70
+SCORE_WEIGHT_TEMPERATURE    = 0.30
+
+# Temperature score control points (°C, score 0.0–1.0)
+# Linear interpolation is applied between points, so these can be tuned manually
+# without changing the scoring code itself.
+TEMPERATURE_SCORE_POINTS = (
+    (-5.0, 0.00),
+    ( 2.0, 0.35),
+    ( 8.0, 0.60),
+    (10.0, 1.00),
+    (25.0, 1.00),
+    (27.0, 0.90),
+    (35.0, 0.00),
+)
+
 # ---------------------------------------------------------------------------
 # Supply corridor: upstream migration availability from the south
 # Science: migration is a pipeline — birds must first pass through Spain
@@ -248,6 +265,20 @@ def clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
 
 
+def interpolate_piecewise_score(value: float, points: tuple[tuple[float, float], ...]) -> float:
+    if not points:
+        return 0.0
+    if value <= points[0][0]:
+        return clamp(points[0][1], 0.0, 1.0)
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        if value <= x1:
+            if x1 == x0:
+                return clamp(y1, 0.0, 1.0)
+            ratio = (value - x0) / (x1 - x0)
+            return clamp(y0 + ratio * (y1 - y0), 0.0, 1.0)
+    return clamp(points[-1][1], 0.0, 1.0)
+
+
 def wind_direction_label(degrees: float) -> str:
     return WIND_DIRECTION_LABELS[round((degrees % 360.0) / 22.5) % 16]
 
@@ -263,6 +294,10 @@ def bene_spring_wind_override(direction_deg: float, speed_kmh: float) -> str | N
     return None
 
 
+def temperature_score(temp_c: float) -> float:
+    return interpolate_piecewise_score(temp_c, TEMPERATURE_SCORE_POINTS)
+
+
 def compute_migration_score(
     weather: dict | None,
     lat: float = 0.0,
@@ -272,14 +307,8 @@ def compute_migration_score(
     Return (score, confidence) where score ∈ [0, 1].
 
     Weights:
-      35 % wind direction     (regionally corrected — see below)
-      20 % precipitation      (dry = good; rain fronts cause stopover)
-      10 % sea-level pressure (> 1015 hPa anticyclone = stable = good)
-      10 % visibility         (clear = good)
-      10 % wind speed         (regionally corrected — see below)
-       5 % temperature        (8–20 °C = optimal)
-       5 % boundary-layer height (BLH > 1500 m = good thermals for soaring birds)
-       5 % CAPE               (convective energy — thermal indicator)
+      70 % wind direction     (regionally corrected — see below)
+      30 % temperature        (manually adjustable via TEMPERATURE_SCORE_POINTS)
 
     Wind direction correction (general and BE/NL):
       South component (wind from S, SSE, SSW …) raises the score.
@@ -301,12 +330,6 @@ def compute_migration_score(
     wind_speed = float(weather.get("wind_speed_10m", 0))
     wind_dir   = float(weather.get("wind_direction_10m", 180))
     temp       = float(weather.get("temperature_2m", 12))
-    precip     = float(weather.get("precipitation", 0))
-    visibility = float(weather.get("visibility", 10000))
-    pressure   = float(weather.get("pressure_msl", 1013))
-    cape       = float(weather.get("cape", 0))
-    blh        = float(weather.get("boundary_layer_height", 500))
-
     in_bene = (
         BENE_LAT_MIN <= lat <= BENE_LAT_MAX
         and BENE_LON_MIN <= lon <= BENE_LON_MAX
@@ -316,10 +339,8 @@ def compute_migration_score(
         override = bene_spring_wind_override(wind_dir, wind_speed)
         if override == "zero":
             wind_dir_score = 0.0
-            wind_speed_score = 0.0
         elif override == "max":
             wind_dir_score = 1.0
-            wind_speed_score = 1.0
         else:
             # Asymmetric directional score peaked at ZO (135°):
             #   ZO (135°) > ZZO (157.5°) > OZO (112.5°) > Z (180°) > O (90°) > N/W ≈ 0
@@ -332,24 +353,6 @@ def compute_migration_score(
                 wind_dir_score = max(
                     0.0, math.cos(math.radians(abs(delta) * 180.0 / BENE_WIND_FALLOFF_E))
                 )
-            # Tiered speed score: 3–5 Bf optimal > 1–3 Bf good > calm/storm
-            if wind_speed < BENE_WIND_SPEED_1BF:
-                wind_speed_score = 0.2
-            elif wind_speed < BENE_WIND_SPEED_3BF:
-                wind_speed_score = 0.2 + (
-                    (wind_speed - BENE_WIND_SPEED_1BF)
-                    / (BENE_WIND_SPEED_3BF - BENE_WIND_SPEED_1BF)
-                ) * 0.8
-            elif wind_speed <= BENE_WIND_SPEED_5BF:
-                wind_speed_score = 1.0
-            elif wind_speed < BENE_WIND_SPEED_7BF:
-                wind_speed_score = max(
-                    0.3, 1.0 - (wind_speed - BENE_WIND_SPEED_5BF)
-                    / (BENE_WIND_SPEED_7BF - BENE_WIND_SPEED_5BF) * 0.7
-                )
-            else:
-                wind_speed_score = max(0.0, 0.3 - (wind_speed - BENE_WIND_SPEED_7BF) / 30.0)
-
             # BE/NL west-component correction:
             # West component lowers score; exception: strong NW/W (>6 Bf) →
             # excellent sea migration (birds blown eastward over the North Sea).
@@ -370,73 +373,14 @@ def compute_migration_score(
             wind_dir_score = clamp(south_score + west_component * WIND_SEA_BONUS, 0.0, 1.0)
         else:
             wind_dir_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
-        # Optimal 5–25 km/h
-        if wind_speed <= 5:
-            wind_speed_score = wind_speed / 5.0
-        elif wind_speed <= 25:
-            wind_speed_score = 1.0
-        else:
-            wind_speed_score = clamp(1.0 - (wind_speed - 25) / 35.0, 0.0, 1.0)
+    temp_score = temperature_score(temp)
 
-    # Precipitation: dry = 1.0, 5 mm/h+ = 0.0
-    precip_score = clamp(1.0 - precip / 5.0, 0.0, 1.0)
-
-    # Visibility: 10 km+ = 1.0
-    vis_score = clamp(visibility / 10000.0, 0.0, 1.0)
-
-    # Temperature: 8–20 °C = optimal
-    if 8 <= temp <= 20:
-        temp_score = 1.0
-    elif temp < 8:
-        temp_score = clamp((temp + 5) / 13.0, 0.0, 1.0)
-    else:
-        temp_score = clamp(1.0 - (temp - 20) / 15.0, 0.0, 1.0)
-
-    # Pressure: high-pressure system → good; 1025+ ≈ 1.0, < 995 ≈ 0.0
-    pressure_score = clamp((pressure - 995.0) / 30.0, 0.0, 1.0)
-
-    # Boundary-layer height: higher = better thermals for soaring birds
-    blh_score = clamp(blh / 1500.0, 0.0, 1.0)
-
-    # CAPE: moderate = good for thermal soaring; too high = storm risk
-    if cape <= 0:
-        cape_score = 0.2
-    elif cape <= 500:
-        cape_score = 0.4 + (cape / 500.0) * 0.5
-    elif cape <= 1500:
-        cape_score = 0.9 - ((cape - 500) / 1000.0) * 0.5
-    else:
-        cape_score = clamp(0.4 - (cape - 1500) / 1500.0, 0.0, 1.0)
-
-    # BE/NL: direction 40%, speed 5% (direction is the prime discriminator on
-    # the coast; ensures ZO-1Bf > ZZO-3Bf etc. for all 7 tier priorities).
-    # General: direction 35%, speed 10%.
-    if in_bene:
-        score = clamp(
-            0.40 * wind_dir_score
-            + 0.05 * wind_speed_score
-            + 0.20 * precip_score
-            + 0.10 * vis_score
-            + 0.05 * temp_score
-            + 0.10 * pressure_score
-            + 0.05 * blh_score
-            + 0.05 * cape_score,
-            0.0,
-            1.0,
-        )
-    else:
-        score = clamp(
-            0.35 * wind_dir_score
-            + 0.10 * wind_speed_score
-            + 0.20 * precip_score
-            + 0.10 * vis_score
-            + 0.05 * temp_score
-            + 0.10 * pressure_score
-            + 0.05 * blh_score
-            + 0.05 * cape_score,
-            0.0,
-            1.0,
-        )
+    score = clamp(
+        SCORE_WEIGHT_WIND_DIRECTION * wind_dir_score
+        + SCORE_WEIGHT_TEMPERATURE * temp_score,
+        0.0,
+        1.0,
+    )
     confidence = clamp(0.50 + 0.40 * math.sqrt(score), 0.0, 1.0)
     return round(score, 3), round(confidence, 3)
 
