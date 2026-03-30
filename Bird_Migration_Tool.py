@@ -119,12 +119,19 @@ def graden_naar_windrichting(graden):
     return richtingen[index]
 
 # Functie om windsnelheid in km/h naar Beaufort te converteren
-def kmh_naar_beaufort(kmh):
-    grenzen = [1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118]
-    for i, grens in enumerate(grenzen):
+_BEAUFORT_DREMPELS_KMH = [1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118]
+
+
+def _kmh_naar_beaufort_klasse(kmh):
+    for i, grens in enumerate(_BEAUFORT_DREMPELS_KMH):
         if kmh <= grens:
-            return f"{i}"
-    return "12Bf"
+            return i
+    return 12
+
+
+def kmh_naar_beaufort(kmh):
+    bf = _kmh_naar_beaufort_klasse(kmh)
+    return f"{bf}" if bf < 12 else "12Bf"
 
 # Functie om geolocatie op te zoeken
 def toon_geolocatie_op_kaart(locatie):
@@ -272,6 +279,7 @@ BENE_WIND_FALLOFF_E = 135.0   # graden: score daalt naar 0 bij N (0°, 135° ter
 # Windkrachtbereiken voor BE/NL (Beaufort → km/h)
 BENE_WIND_SPEED_1BF =  1.0    # Bf 1 ondergrens
 BENE_WIND_SPEED_3BF = 12.0    # Bf 3 ondergrens (= optimum ondergrens)
+BENE_WIND_SPEED_3BF_MAX = 20.0  # Bf 3 bovengrens
 BENE_WIND_SPEED_5BF = 38.0    # Bf 5 bovengrens (= optimum bovengrens)
 BENE_WIND_SPEED_7BF = 50.0    # Bf 7 ondergrens (= trek grotendeels afgeremd)
 
@@ -283,6 +291,25 @@ WIND_SEA_BONUS      = 0.4     # bonusmultiplicator voor de West-component bij >6
 # Richtingsbereik (graden) waarbinnen de zeemigratiebonus geldt (ZW t/m NNW)
 WIND_NW_W_DIR_MIN   = 225.0   # ZW (ondergrens)
 WIND_NW_W_DIR_MAX   = 330.0   # NNW (bovengrens)
+VOORJAAR_WIND_NUL_ALLE_SNELHEDEN = frozenset({"W", "NW", "WNW", "NNW", "WZW"})
+VOORJAAR_WIND_NUL_STRIKT_BOVEN_3BF = frozenset({"ZW", "N", "NNO"})
+VOORJAAR_WIND_MAX_STRIKT_ONDER_3BF = frozenset({"ZW", "ZZW"})
+
+# Scoregewichten (manueel aanpasbaar)
+MIGRATIE_SCORE_WINDRICHTING_GEWICHT = 0.70
+MIGRATIE_SCORE_TEMPERATUUR_GEWICHT  = 0.30
+
+# Temperatuurscore via handmatig aanpasbare controlepunten (°C, score 0.0–1.0)
+# Tussen de punten wordt lineair geïnterpoleerd.
+TEMPERATUUR_SCORE_PUNTEN = (
+    (-5.0, 0.00),
+    ( 2.0, 0.35),
+    ( 8.0, 0.60),
+    (10.0, 1.00),
+    (25.0, 1.00),
+    (27.0, 0.90),
+    (35.0, 0.00),
+)
 
 # ---------------------------------------------------------------------------
 # Aanvoercorridor: migratieaanvoer vanuit het zuiden naar BE/NL
@@ -634,16 +661,13 @@ def laad_zeebries_kustdata() -> tuple[list[list[dict]], list[str], str]:
     return kustpunten_per_dag, dag_datums, opgehaald_om
 
 
-def migratie_bereken_score(weer):
+def migratie_bereken_score(weer, lat: float = 0.0, lon: float = 0.0):
     """
     Bereken migratiescore (0.0 = extreem ongunstig, 1.0 = extreem gunstig).
 
-    Gewichten (conform AI-Predictor.md):
-      - Windrichting  40 %  (zuidenwind = ideale rugwind; West-component verlaagt score)
-      - Neerslag      25 %  (droog = gunstig)
-      - Windkracht    15 %  (matige wind = optimaal)
-      - Zicht         10 %  (helder = gunstig)
-      - Temperatuur   10 %  (8–20 °C = optimaal)
+    Gewichten:
+      - Windrichting  70 %  (manueel aanpasbaar via constante)
+      - Temperatuur   30 %  (manueel aanpasbaar via temperatuur-puntenreeks)
 
     Uitzondering windrichting: sterke NW/W wind (>6 Bf) levert geweldige zeemigratie
     op; in dat geval vervalt de West-straf en geldt een zeemigratiebonus.
@@ -654,51 +678,36 @@ def migratie_bereken_score(weer):
     wind_kracht   = float(weer.get("wind_speed_10m", 0))
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
-    neerslag      = float(weer.get("precipitation", 0))
-    zicht         = float(weer.get("visibility", 10000))
+    in_bene = (
+        BENE_LAT_MIN <= lat <= BENE_LAT_MAX
+        and BENE_LON_MIN <= lon <= BENE_LON_MAX
+    )
+    override = _voorjaar_bene_wind_override(wind_richting, wind_kracht) if in_bene else None
 
     # Windrichting: zuidenwind (180°) = ideale rugwind voor noordwaartse trek
     #   Zuid-component verhoogt de score; West-component verlaagt de score.
     #   Uitzondering: sterke NW/W wind (>6 Bf) → geweldige migratie over zee
     #     (vogels worden oostwaarts geblazen over de Noordzee).
-    south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
-    west_component = max(0.0, -math.sin(math.radians(wind_richting)))
-    is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
-    if is_nw_w_sterk:
-        # Sterke NW/W: West-straf vervalt; West-component levert zeemigratiebonus op
-        wind_richting_score = min(1.0, south_score + west_component * WIND_SEA_BONUS)
+    if override == "zero":
+        wind_richting_score = 0.0
+    elif override == "max":
+        wind_richting_score = 1.0
     else:
-        # Meer West-component → lagere score; meer Zuid-component → hogere score
-        wind_richting_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
+        south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
+        west_component = max(0.0, -math.sin(math.radians(wind_richting)))
+        is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
+        if is_nw_w_sterk:
+            # Sterke NW/W: West-straf vervalt; West-component levert zeemigratiebonus op
+            wind_richting_score = min(1.0, south_score + west_component * WIND_SEA_BONUS)
+        else:
+            # Meer West-component → lagere score; meer Zuid-component → hogere score
+            wind_richting_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
 
-    # Windkracht: optimaal 5–25 km/h
-    if wind_kracht <= 5:
-        wind_kracht_score = wind_kracht / 5.0
-    elif wind_kracht <= 25:
-        wind_kracht_score = 1.0
-    else:
-        wind_kracht_score = max(0.0, 1.0 - (wind_kracht - 25) / 35.0)
-
-    # Neerslag: droog = maximaal gunstig
-    neerslag_score = max(0.0, 1.0 - neerslag / 5.0)
-
-    # Zicht: 10 km of meer = maximaal
-    zicht_score = min(1.0, zicht / 10000.0)
-
-    # Temperatuur: 8–20 °C = optimaal voor voorjaarstrek
-    if 8 <= temperatuur <= 20:
-        temp_score = 1.0
-    elif temperatuur < 8:
-        temp_score = max(0.0, (temperatuur + 5) / 13.0)
-    else:
-        temp_score = max(0.0, 1.0 - (temperatuur - 20) / 15.0)
+    temp_score = _temperatuur_score(temperatuur)
 
     score = (
-        0.40 * wind_richting_score
-        + 0.15 * wind_kracht_score
-        + 0.25 * neerslag_score
-        + 0.10 * zicht_score
-        + 0.10 * temp_score
+        MIGRATIE_SCORE_WINDRICHTING_GEWICHT * wind_richting_score
+        + MIGRATIE_SCORE_TEMPERATUUR_GEWICHT * temp_score
     )
     return round(min(1.0, max(0.0, score)), 3)
 
@@ -786,7 +795,7 @@ def laad_migratie_rasterdata():
 
     def verwerk_punt(punt):
         weer = _haal_weer_rasterpunt(punt)
-        score = migratie_bereken_score(weer)
+        score = migratie_bereken_score(weer, lat=punt["latitude"], lon=punt["longitude"])
         wind_richting_txt = ""
         wind_kracht_txt   = ""
         temp_txt          = "?"
@@ -959,23 +968,46 @@ def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
     return None
 
 
+def _voorjaar_bene_wind_override(wind_richting: float, wind_kracht: float) -> str | None:
+    richting = graden_naar_windrichting(wind_richting)
+    if richting in VOORJAAR_WIND_NUL_ALLE_SNELHEDEN:
+        return "zero"
+    if richting in VOORJAAR_WIND_NUL_STRIKT_BOVEN_3BF and wind_kracht > BENE_WIND_SPEED_3BF_MAX:
+        return "zero"
+    if richting in VOORJAAR_WIND_MAX_STRIKT_ONDER_3BF and wind_kracht < BENE_WIND_SPEED_3BF:
+        return "max"
+    return None
+
+
+def _interpoleer_score_puntsgewijs(waarde: float, punten) -> float:
+    if not punten:
+        return 0.0
+    if waarde <= punten[0][0]:
+        return max(0.0, min(1.0, punten[0][1]))
+    for (x0, y0), (x1, y1) in zip(punten, punten[1:]):
+        if waarde <= x1:
+            if x1 == x0:
+                return max(0.0, min(1.0, y1))
+            verhouding = (waarde - x0) / (x1 - x0)
+            return max(0.0, min(1.0, y0 + verhouding * (y1 - y0)))
+    return max(0.0, min(1.0, punten[-1][1]))
+
+
+def _temperatuur_score(temperatuur: float) -> float:
+    return _interpoleer_score_puntsgewijs(temperatuur, TEMPERATUUR_SCORE_PUNTEN)
+
+
 def migratie_bereken_score_uitgebreid(
     weer: dict | None,
     lat: float = 0.0,
     lon: float = 0.0,
 ) -> float:
     """
-    Bereken migratiescore (0.0–1.0) inclusief luchtdruk, thermiek en regenfronten.
+    Bereken migratiescore (0.0–1.0) op basis van windrichting en temperatuur.
 
     Gewichten:
-      35 % windrichting   (regionaal gecorrigeerd — zie hieronder)
-      20 % neerslag       (droog = gunstig; regenfronten = stoppers)
-      10 % luchtdruk MSL  (hogedrukgebied > 1015 hPa = stabiele omstandigheden)
-      10 % zicht
-      10 % windkracht     (regionaal gecorrigeerd — zie hieronder)
-       5 % temperatuur    (8–20 °C)
-       5 % grenslaagdikte (BLH > 1500 m = goede thermiek voor zwevers & roofvogels)
-       5 % CAPE           (convectieve beschikbare energie = thermiekindicator)
+      70 % windrichting   (regionaal gecorrigeerd — zie hieronder)
+      30 % temperatuur    (via manueel aanpasbare temperatuur-puntenreeks)
 
     Windrichtings-correctie (algemeen en BE/NL):
       Zuid-component (wind uit Z, ZZO, ZZW …) verhoogt de score.
@@ -998,11 +1030,6 @@ def migratie_bereken_score_uitgebreid(
     wind_kracht   = float(weer.get("wind_speed_10m", 0))
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
-    neerslag      = float(weer.get("precipitation", 0))
-    zicht         = float(weer.get("visibility", 10000))
-    druk          = float(weer.get("pressure_msl", 1013))
-    cape          = float(weer.get("cape", 0))
-    blh           = float(weer.get("boundary_layer_height", 500))
 
     in_bene = (
         BENE_LAT_MIN <= lat <= BENE_LAT_MAX
@@ -1010,58 +1037,40 @@ def migratie_bereken_score_uitgebreid(
     )
 
     if in_bene:
-        # --- BE/NL asymmetric wind direction score ---
-        # Peak at ZO (135°). Angular distance from ZO:
-        #   positive δ  = clockwise toward ZZO → Z → ZW → W  (southerly component)
-        #   negative δ  = counter-clockwise toward OZO → O → N (easterly component)
-        # Slower decay toward the south (ZZO scores higher than OZO at equal angular
-        # distance), faster decay toward the east, so:
-        #   ZO (135°) > ZZO (157.5°) > OZO (112.5°) > Z (180°) > O (90°) > N/W ≈ 0
-        delta = ((wind_richting - BENE_WIND_OPT_DIR) + 180.0) % 360.0 - 180.0
-        if delta >= 0:
-            # South side: reach 0 at BENE_WIND_FALLOFF_S degrees past ZO (= near W)
-            wind_richting_score = max(
-                0.0, math.cos(math.radians(delta * 180.0 / BENE_WIND_FALLOFF_S))
-            )
+        override = _voorjaar_bene_wind_override(wind_richting, wind_kracht)
+        if override == "zero":
+            wind_richting_score = 0.0
+        elif override == "max":
+            wind_richting_score = 1.0
         else:
-            # East side: reach 0 at BENE_WIND_FALLOFF_E degrees before ZO (= near N)
-            wind_richting_score = max(
-                0.0, math.cos(math.radians(abs(delta) * 180.0 / BENE_WIND_FALLOFF_E))
-            )
+            # --- BE/NL asymmetric wind direction score ---
+            # Peak at ZO (135°). Angular distance from ZO:
+            #   positive δ  = clockwise toward ZZO → Z → ZW → W  (southerly component)
+            #   negative δ  = counter-clockwise toward OZO → O → N (easterly component)
+            # Slower decay toward the south (ZZO scores higher than OZO at equal angular
+            # distance), faster decay toward the east, so:
+            #   ZO (135°) > ZZO (157.5°) > OZO (112.5°) > Z (180°) > O (90°) > N/W ≈ 0
+            delta = ((wind_richting - BENE_WIND_OPT_DIR) + 180.0) % 360.0 - 180.0
+            if delta >= 0:
+                # South side: reach 0 at BENE_WIND_FALLOFF_S degrees past ZO (= near W)
+                wind_richting_score = max(
+                    0.0, math.cos(math.radians(delta * 180.0 / BENE_WIND_FALLOFF_S))
+                )
+            else:
+                # East side: reach 0 at BENE_WIND_FALLOFF_E degrees before ZO (= near N)
+                wind_richting_score = max(
+                    0.0, math.cos(math.radians(abs(delta) * 180.0 / BENE_WIND_FALLOFF_E))
+                )
 
-        # --- BE/NL tiered wind speed score ---
-        # Prioriteiten (beste → slechtste):
-        #   3–5 Bf (12–38 km/h) = optimaal  → score 1.0
-        #   1–3 Bf  (1–12 km/h) = goed      → score 0.2 oplopend naar 1.0
-        #   0  Bf   (< 1 km/h)  = kalm      → score 0.2  (vogels vliegen hoog)
-        #   6  Bf  (38–50 km/h) = afnemend  → score 1.0 → 0.3
-        #   7+ Bf  (≥ 50 km/h)  = afgeremd  → score ≤ 0.3
-        if wind_kracht < BENE_WIND_SPEED_1BF:
-            wind_kracht_score = 0.2
-        elif wind_kracht < BENE_WIND_SPEED_3BF:
-            wind_kracht_score = 0.2 + (
-                (wind_kracht - BENE_WIND_SPEED_1BF)
-                / (BENE_WIND_SPEED_3BF - BENE_WIND_SPEED_1BF)
-            ) * 0.8
-        elif wind_kracht <= BENE_WIND_SPEED_5BF:
-            wind_kracht_score = 1.0
-        elif wind_kracht < BENE_WIND_SPEED_7BF:
-            wind_kracht_score = max(
-                0.3, 1.0 - (wind_kracht - BENE_WIND_SPEED_5BF)
-                / (BENE_WIND_SPEED_7BF - BENE_WIND_SPEED_5BF) * 0.7
-            )
-        else:
-            wind_kracht_score = max(0.0, 0.3 - (wind_kracht - BENE_WIND_SPEED_7BF) / 30.0)
-
-        # --- BE/NL West-component correctie ---
-        # West-component verlaagt de score; uitzondering: sterke NW/W (>6 Bf)
-        # → vogels worden oostwaarts geblazen over de Noordzee (zeemigratie).
-        west_component = max(0.0, -math.sin(math.radians(wind_richting)))
-        is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
-        if is_nw_w_sterk:
-            wind_richting_score = min(1.0, wind_richting_score + west_component * WIND_SEA_BONUS)
-        else:
-            wind_richting_score = max(0.0, wind_richting_score - WIND_WEST_PENALTY * west_component)
+            # --- BE/NL West-component correctie ---
+            # West-component verlaagt de score; uitzondering: sterke NW/W (>6 Bf)
+            # → vogels worden oostwaarts geblazen over de Noordzee (zeemigratie).
+            west_component = max(0.0, -math.sin(math.radians(wind_richting)))
+            is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
+            if is_nw_w_sterk:
+                wind_richting_score = min(1.0, wind_richting_score + west_component * WIND_SEA_BONUS)
+            else:
+                wind_richting_score = max(0.0, wind_richting_score - WIND_WEST_PENALTY * west_component)
     else:
         # Algemeen: Z-wind (180°) = ideale rugwind; N (0°/360°) = tegenwind.
         # Zuid-component verhoogt de score; West-component verlaagt de score.
@@ -1074,70 +1083,12 @@ def migratie_bereken_score_uitgebreid(
         else:
             wind_richting_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
 
-        # Algemeen: 5–25 km/h = optimaal
-        if wind_kracht <= 5:
-            wind_kracht_score = wind_kracht / 5.0
-        elif wind_kracht <= 25:
-            wind_kracht_score = 1.0
-        else:
-            wind_kracht_score = max(0.0, 1.0 - (wind_kracht - 25) / 35.0)
+    temp_score = _temperatuur_score(temperatuur)
 
-    # Neerslag: droog = gunstig; regenfronten veroorzaken stoppers
-    neerslag_score = max(0.0, 1.0 - neerslag / 5.0)
-
-    # Zicht
-    zicht_score = min(1.0, zicht / 10000.0)
-
-    # Temperatuur: 8–20 °C = optimaal voor voorjaarstrek
-    if 8 <= temperatuur <= 20:
-        temp_score = 1.0
-    elif temperatuur < 8:
-        temp_score = max(0.0, (temperatuur + 5) / 13.0)
-    else:
-        temp_score = max(0.0, 1.0 - (temperatuur - 20) / 15.0)
-
-    # Luchtdruk: hogedrukgebied gunstig — 1025+ hPa ≈ 1.0, < 995 hPa ≈ 0.0
-    druk_score = max(0.0, min(1.0, (druk - 995.0) / 30.0))
-
-    # Grenslaagdikte (BLH): hoge waarden = goede thermiek voor zwevers
-    blh_score = min(1.0, blh / 1500.0)
-
-    # CAPE: matige convectieve energie gunstig voor thermiekzwevers;
-    # te hoog (> 1500 J/kg) = onweersrisico
-    if cape <= 0:
-        cape_score = 0.2
-    elif cape <= 500:
-        cape_score = 0.4 + (cape / 500.0) * 0.5
-    elif cape <= 1500:
-        cape_score = 0.9 - ((cape - 500) / 1000.0) * 0.5
-    else:
-        cape_score = max(0.0, 0.4 - (cape - 1500) / 1500.0)
-
-    # BE/NL: windrichting weegt zwaarder (40 %) en windkracht lichter (5 %)
-    # zodat ZO 1–3Bf boven ZZO 3–5Bf uitkomt — richting is dé discriminator.
-    # Algemeen: 35 % windrichting, 10 % windkracht.
-    if in_bene:
-        score = (
-            0.40 * wind_richting_score
-            + 0.05 * wind_kracht_score
-            + 0.20 * neerslag_score
-            + 0.10 * zicht_score
-            + 0.05 * temp_score
-            + 0.10 * druk_score
-            + 0.05 * blh_score
-            + 0.05 * cape_score
-        )
-    else:
-        score = (
-            0.35 * wind_richting_score
-            + 0.10 * wind_kracht_score
-            + 0.20 * neerslag_score
-            + 0.10 * zicht_score
-            + 0.05 * temp_score
-            + 0.10 * druk_score
-            + 0.05 * blh_score
-            + 0.05 * cape_score
-        )
+    score = (
+        MIGRATIE_SCORE_WINDRICHTING_GEWICHT * wind_richting_score
+        + MIGRATIE_SCORE_TEMPERATUUR_GEWICHT * temp_score
+    )
     return round(min(1.0, max(0.0, score)), 3)
 
 
@@ -2154,5 +2105,3 @@ with tabs[6]:
            Uiteraard kan je in deze context ook terecht op de webpagina van Trektellen.nl, echter kan je geen gegevens wijzigen op deze site, het weergeven van trektellen.nl is hier puur informatief bedoeld.
         7. Voor meldingen, opmerkingen en vragen kan je terecht via mail : ydsdsy@gmail.com""")
         # Een mailto-link toevoegen
-
-
