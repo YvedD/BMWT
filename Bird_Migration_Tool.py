@@ -244,7 +244,7 @@ MIGRATIE_LON_MIN    = -9.5
 MIGRATIE_LON_MAX    = 15.3
 
 # 5-daagse voorspelling: vandaag + 5 dagen = 6 kaarten
-MIGRATIE_FORECAST_DAYS  = 6
+MIGRATIE_FORECAST_DAYS  = 10
 MIGRATIE_FORECAST_HOURS = MIGRATIE_FORECAST_DAYS * 24   # = 144 uurlijkse waarden
 
 # Vlieghoogte-drempelwaarden (km/h)
