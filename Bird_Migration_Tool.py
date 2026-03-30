@@ -264,10 +264,10 @@ CORRIDOR_LON_MAX = 13.9
 
 # Bounding box voor BE/NL ZO-wind optimum (vogels gestuwd vanuit centraal-Frankrijk)
 # ZO-wind (135°, 3–5 Bf) is de ideale windrichting voor trek langs de Noordzeekust
-BENE_LAT_MIN        = 43.0    # zuidgrens BE
-BENE_LAT_MAX        = 53.5    # noordgrens NL
-BENE_LON_MIN        = 2.0     # westkust BE/NL
-BENE_LON_MAX        = 8.0     # oost-NL / ruhr-gebied
+BENE_LAT_MIN        = 49.5    # zuidgrens BE
+BENE_LAT_MAX        = 55.5    # noordgrens NL
+BENE_LON_MIN        = -9.5     # westkust BE/NL
+BENE_LON_MAX        = 13.9     # oost-NL / ruhr-gebied
 BENE_WIND_OPT_DIR   = 135.0   # ideale windrichting ZO (graden)
 
 # Asymmetrisch verval van de windrichtingsscore rond ZO (135°):
@@ -305,10 +305,10 @@ TEMPERATUUR_SCORE_PUNTEN = (
     (-5.0, 0.00),
     ( 2.0, 0.05),
     ( 5.0, 0.10),
-    (8.0, 0.15),
+    ( 8.0, 0.15),
     (10.0, 0.20),
-    ( 12.0, 0.35),
-    ( 18.0, 0.50),
+    (12.0, 0.35),
+    (18.0, 0.50),
     (20.0, 0.60),
     (25.0, 0.70),
     (27.0, 0.95),
@@ -331,8 +331,8 @@ SUPPLY_CORRIDOR_LON_MIN = -2.0  # Westgrens migratieroute
 SUPPLY_CORRIDOR_LON_MAX = 10.0  # Oostgrens migratieroute
 SUPPLY_LAG_FRANCE       = 1     # 1 dag eerder: vogels in Fr. → volgende dag in BE
 SUPPLY_LAG_SPAIN        = 2     # 2 dagen eerder: vogels in Sp. → 2 dagen later in BE
-SUPPLY_FRANCE_WEIGHT    = 0.60  # Gewicht van de Franse aanvoer (directere impact)
-SUPPLY_SPAIN_WEIGHT     = 0.40  # Gewicht van de Spaanse aanvoer
+SUPPLY_FRANCE_WEIGHT    = 0.80  # Gewicht van de Franse aanvoer (directere impact)
+SUPPLY_SPAIN_WEIGHT     = 0.20  # Gewicht van de Spaanse aanvoer
 SUPPLY_FACTOR_FLOOR     = 0.30  # Minimum aanvoerfactor (altijd minimaal 30 % door)
 SUPPLY_FACTOR_RANGE     = 0.70  # Werkbereik van de aanvoerfactor (1 − floor)
 STANDAARD_CORRIDOR_SCORE = 0.50 # Terugvalwaarde als corridor leeg is
