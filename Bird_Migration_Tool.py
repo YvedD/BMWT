@@ -285,7 +285,7 @@ BENE_WIND_SPEED_7BF = 50.0    # Bf 7 ondergrens (= trek grotendeels afgeremd)
 
 # Windrichting-correctiefactoren
 # West-component strafterm: hoe meer West-component, hoe lager de score
-WIND_WEST_PENALTY   = 0.5     # strafmultiplicator voor de West-component
+WIND_WEST_PENALTY   = 0.7     # strafmultiplicator voor de West-component
 # Zeemigratiebonus bij sterke NW/W wind (>6 Bf): vogels worden oostwaarts geblazen
 WIND_SEA_BONUS      = 0.4     # bonusmultiplicator voor de West-component bij >6 Bf
 # Richtingsbereik (graden) waarbinnen de zeemigratiebonus geldt (ZW t/m NNW)
@@ -303,11 +303,15 @@ MIGRATIE_SCORE_TEMPERATUUR_GEWICHT  = 0.30
 # Tussen de punten wordt lineair geïnterpoleerd.
 TEMPERATUUR_SCORE_PUNTEN = (
     (-5.0, 0.00),
-    ( 2.0, 0.35),
-    ( 8.0, 0.60),
-    (10.0, 1.00),
-    (25.0, 1.00),
-    (27.0, 0.90),
+    ( 2.0, 0.05),
+    ( 5.0, 0.10),
+    (8.0, 0.15),
+    (10.0, 0.20),
+    ( 12.0, 0.35),
+    ( 18.0, 0.50),
+    (20.0, 0.60),
+    (25.0, 0.70),
+    (27.0, 0.95),
     (35.0, 0.00),
 )
 
