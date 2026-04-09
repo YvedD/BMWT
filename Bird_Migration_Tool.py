@@ -243,9 +243,9 @@ MIGRATIE_LAT_MAX    = 56.0
 MIGRATIE_LON_MIN    = -9.5
 MIGRATIE_LON_MAX    = 15.3
 
-# 5-daagse voorspelling: vandaag + 5 dagen = 6 kaarten
-MIGRATIE_FORECAST_DAYS  = 10
-MIGRATIE_FORECAST_HOURS = MIGRATIE_FORECAST_DAYS * 24   # = 144 uurlijkse waarden
+# 7-daagse voorspelling: vandaag + 7 extra dagen = 8 kaarten
+MIGRATIE_FORECAST_DAYS  = 8
+MIGRATIE_FORECAST_HOURS = MIGRATIE_FORECAST_DAYS * 24   # = 192 uurlijkse waarden
 
 # Vlieghoogte-drempelwaarden (km/h)
 VLIEGHOOGTE_LAAG_MIN         = 29    # 5–6 Bf: vogels vliegen laag (waarneembaar)
@@ -264,10 +264,15 @@ CORRIDOR_LON_MAX = 13.9
 
 # Bounding box voor BE/NL ZO-wind optimum (vogels gestuwd vanuit centraal-Frankrijk)
 # ZO-wind (135°, 3–5 Bf) is de ideale windrichting voor trek langs de Noordzeekust
-BENE_LAT_MIN        = 49.5    # zuidgrens BE
-BENE_LAT_MAX        = 55.5    # noordgrens NL
-BENE_LON_MIN        = -9.5     # westkust BE/NL
-BENE_LON_MAX        = 13.9     # oost-NL / ruhr-gebied
+# Polygoon (trapezium): SW(50.0°N, 0.9°E) → SE(50.0°N, 13.9°E) → NE(55.0°N, 12.6°E) → NW(55.0°N, 8.7°E)
+# De westgrens verschuift van 0.9°E (zuidkant) naar 8.7°E (noordkant), zodat de Atlantische
+# kust en westelijk Frankrijk buiten de BE/NL-zone vallen.
+BENE_LAT_MIN        = 50.0    # zuidgrens BE-polygoon
+BENE_LAT_MAX        = 55.0    # noordgrens NL-polygoon
+BENE_POLYGON_SW_LON = 0.9     # lengtegraad ZW-hoek (lat 50.0°N)
+BENE_POLYGON_SE_LON = 13.9    # lengtegraad ZO-hoek (lat 50.0°N)
+BENE_POLYGON_NW_LON = 8.7     # lengtegraad NW-hoek (lat 55.0°N)
+BENE_POLYGON_NE_LON = 12.6    # lengtegraad NO-hoek (lat 55.0°N)
 BENE_WIND_OPT_DIR   = 135.0   # ideale windrichting ZO (graden)
 
 # Asymmetrisch verval van de windrichtingsscore rond ZO (135°):
@@ -351,7 +356,7 @@ _UITGESLOTEN_TIJDZONES = frozenset({
 # === ZEEBRIES KUSTDETECTOR — vaste kustlocaties (Saint-Malo t/m Esbjerg) ===
 # Zeebries = onshore wind vanuit zee die ontstaat bij sterke opwarming van het land.
 # Reikt slechts 5–15 km landinwaarts en is een echte migratie-stopper aan de kust.
-ZEEBRIES_HORIZON_DAYS        =  6     # aantal voorspellingsdagen
+ZEEBRIES_HORIZON_DAYS        =  8     # aantal voorspellingsdagen
 ZEEBRIES_MAP_CENTER_LAT      = 52.5   # centrum zeebries-kaart (breedtegraad)
 ZEEBRIES_MAP_CENTER_LON      =  4.0   # centrum zeebries-kaart (lengtegraad)
 ZEEBRIES_MAP_ZOOM            =  5     # initieel zoomniveau zeebries-kaart
@@ -420,6 +425,25 @@ def migratie_is_geldig_punt(lat: float, lon: float) -> bool:
     if tz in _UITGESLOTEN_TIJDZONES:
         return False          # uitgesloten regio's
     return True
+
+
+def _punt_in_bene_polygoon(lat: float, lon: float) -> bool:
+    """Controleer of (lat, lon) binnen het BE/NL/DE-trapeziumgebied valt.
+
+    Het trapezium heeft vier hoekpunten:
+      ZW: (50.0°N, 0.9°E)  ·  ZO: (50.0°N, 13.9°E)
+      NW: (55.0°N, 8.7°E)  ·  NO: (55.0°N, 12.6°E)
+
+    De westgrens verschuift lineair van 0.9°E (bij 50°N) naar 8.7°E (bij 55°N),
+    de oostgrens van 13.9°E naar 12.6°E.  Zo vallen de Atlantische kust en het
+    grootste deel van westelijk Frankrijk buiten de zone.
+    """
+    if not (BENE_LAT_MIN <= lat <= BENE_LAT_MAX):
+        return False
+    t = (lat - BENE_LAT_MIN) / (BENE_LAT_MAX - BENE_LAT_MIN)  # 0.0 = 50°N, 1.0 = 55°N
+    lon_min = BENE_POLYGON_SW_LON + t * (BENE_POLYGON_NW_LON - BENE_POLYGON_SW_LON)
+    lon_max = BENE_POLYGON_SE_LON + t * (BENE_POLYGON_NE_LON - BENE_POLYGON_SE_LON)
+    return lon_min <= lon <= lon_max
 
 
 def migratie_genereer_rasterpunten(lat_step: float = None, lon_step: float = None):
@@ -682,10 +706,7 @@ def migratie_bereken_score(weer, lat: float = 0.0, lon: float = 0.0):
     wind_kracht   = float(weer.get("wind_speed_10m", 0))
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
-    in_bene = (
-        BENE_LAT_MIN <= lat <= BENE_LAT_MAX
-        and BENE_LON_MIN <= lon <= BENE_LON_MAX
-    )
+    in_bene = _punt_in_bene_polygoon(lat, lon)
     override = _voorjaar_bene_wind_override(wind_richting, wind_kracht) if in_bene else None
 
     # Windrichting: zuidenwind (180°) = ideale rugwind voor noordwaartse trek
@@ -828,7 +849,7 @@ def laad_migratie_rasterdata():
     return resultaten, opgehaald_om
 
 
-# === UITGEBREIDE 5-DAAGSE MIGRATIEVOORSPELLING ===
+# === UITGEBREIDE 7-DAAGSE MIGRATIEVOORSPELLING ===
 
 # Nederlandse dag- en maandafkortingen voor datumopmaak
 _NL_WEEKDAGEN = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"]
@@ -922,7 +943,7 @@ def _uur_waarde(lst, idx: int, standaard: float) -> float:
 
 
 def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
-    """Haal 6-daagse uurlijkse weervoorspelling op voor één rasterpunt.
+    """Haal 8-daagse uurlijkse weervoorspelling op voor één rasterpunt.
 
     Probeert tot 3 keer bij tijdelijke fouten of rate-limiting (HTTP 429).
     """
@@ -935,7 +956,7 @@ def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
             "pressure_msl,cape,boundary_layer_height"
         ),
         "timezone": "UTC",
-        "forecast_days": 6,
+        "forecast_days": 8,
     }
     for poging in range(3):
         try:
@@ -1035,10 +1056,7 @@ def migratie_bereken_score_uitgebreid(
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
 
-    in_bene = (
-        BENE_LAT_MIN <= lat <= BENE_LAT_MAX
-        and BENE_LON_MIN <= lon <= BENE_LON_MAX
-    )
+    in_bene = _punt_in_bene_polygoon(lat, lon)
 
     if in_bene:
         override = _voorjaar_bene_wind_override(wind_richting, wind_kracht)
@@ -1156,7 +1174,7 @@ def _pas_aanvoer_toe(days_data: list[list[dict]]) -> list[list[dict]]:
         for punt in days_data[dag_idx]:
             lat = punt["latitude"]
             lon = punt["longitude"]
-            if BENE_LAT_MIN <= lat <= BENE_LAT_MAX and BENE_LON_MIN <= lon <= BENE_LON_MAX:
+            if _punt_in_bene_polygoon(lat, lon):
                 ruwe_score = punt["score"]
                 adj_score  = round(min(1.0, max(0.0, ruwe_score * supply_factor)), 3)
                 punt["score"]              = adj_score
@@ -1171,8 +1189,8 @@ def _pas_aanvoer_toe(days_data: list[list[dict]]) -> list[list[dict]]:
 @st.cache_data(ttl=1800)
 def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = None):
     """
-    Haal 6-daagse weervoorspelling op voor alle geldige rasterpunten
-    (vandaag + 5 dagen). Zeepunten, VK, Ierland en Man-eiland zijn uitgefilterd.
+    Haal 8-daagse weervoorspelling op voor alle geldige rasterpunten
+    (vandaag + 7 dagen). Zeepunten, VK, Ierland en Man-eiland zijn uitgefilterd.
     Retourneert (days_data, dag_datums, opgehaald_om).
     days_data[i] = lijst van punt-dicts op basis van middagwaarden (12:00 UTC).
 
@@ -1245,10 +1263,7 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
             else:
                 weer = None
 
-            in_bene = (
-                BENE_LAT_MIN <= punt["latitude"] <= BENE_LAT_MAX
-                and BENE_LON_MIN <= punt["longitude"] <= BENE_LON_MAX
-            )
+            in_bene = _punt_in_bene_polygoon(punt["latitude"], punt["longitude"])
             wind_richting_txt = ""
             wind_kracht_txt   = ""
             temp_txt          = "?"
@@ -1713,10 +1728,10 @@ with tabs[1]:
 
 
 with tabs[2]:
-    st.header("🦅 Migratie Raster — 5-Daagse Voorspelling")
+    st.header("🦅 Migratie Raster — 7-Daagse Voorspelling")
     with st.expander("ℹ️ Extra informatie"):
         st.markdown("""
-    Vijfdaagse migratievoorspelling op basis van weergegevens voor een configureerbaar raster
+    Zevendaagse migratievoorspelling op basis van weergegevens voor een configureerbaar raster
     over **België, Nederland en Duitsland** (en omgeving).
     Rasterpunten in zee, Groot-Brittannië, Ierland en het Man-eiland worden buiten beschouwing gelaten.
 
@@ -1732,8 +1747,8 @@ with tabs[2]:
     - 🌀 **Grenslaagdikte / BLH** (5 %): > 1500 m = goede thermiek voor zwevers & roofvogels
     - ⛈️ **CAPE** (5 %): convectieve beschikbare energie — thermiekindicator voor ooievaars, buizerds…
 
-    🌟 **BE/NL regiocorrectie** (zone 49.5–53.5°N, 2–8°E) — vogels gestuwd vanuit centraal-Frankrijk
-    naar de Noordzeekust. Windrichting- én windkrachtscore zijn aangepast:
+    🌟 **BE/NL regiocorrectie** (trapeziumzone: ZW 50°N 0.9°E → ZO 50°N 13.9°E → NO 55°N 12.6°E → NW 55°N 8.7°E) —
+    vogels gestuwd vanuit centraal-Frankrijk naar de Noordzeekust. Windrichting- én windkrachtscore zijn aangepast:
 
     | Prioriteit | Windrichting | Windkracht |
     |:---:|:---:|:---:|
@@ -1778,7 +1793,7 @@ with tabs[2]:
         laad_zeebries_kustdata.clear()
         st.rerun()
 
-    with st.spinner("Weervoorspelling ophalen voor 6-daags migratieraster — even geduld..."):
+    with st.spinner("Weervoorspelling ophalen voor 8-daags migratieraster — even geduld..."):
         days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag = laad_migratie_rasterdata_6daags()
 
     # Laad zeebries-data eenmalig voor alle dagkaarten
@@ -1834,7 +1849,7 @@ with tabs[2]:
         unsafe_allow_html=True,
     )
 
-    # 6 kaarten onder elkaar — vandaag + dag +1 t/m +5
+    # 8 kaarten onder elkaar — vandaag + dag +1 t/m +7
     for dag_idx, (raster_dag, dag_label) in enumerate(zip(days_data, dag_datums)):
         dag_titel = "📅 **Vandaag**" if dag_idx == 0 else f"📅 **Dag +{dag_idx}**"
         gem_score = (
