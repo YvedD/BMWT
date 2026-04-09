@@ -1768,7 +1768,7 @@ with tabs[2]:
 
     # 8 kaarten onder elkaar — vandaag + dag +1 t/m +7
     for dag_idx, (raster_dag, dag_label) in enumerate(zip(days_data, dag_datums)):
-        dag_titel = "📅 **Vandaag**" if dag_idx == 0 else f"📅 **Dag +{dag_idx}**"
+        dag_titel = f"📅 {dag_label}"
         gem_score = (
             round(sum(p["score"] for p in raster_dag) / len(raster_dag) * 100)
             if raster_dag else 0
