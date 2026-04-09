@@ -107,7 +107,7 @@ default_end=(19)
 # Sidebar configuratie
 land_keuze = st.sidebar.selectbox("Land", eu_landen, index=eu_landen.index(default_land))
 locatie_keuze = st.sidebar.text_input("Locatie", value=default_locatie)
-geselecteerde_datum = st.sidebar.date_input("Datum (vandaag of max. 2 jaar eerder !):", value=default_datum, min_value=date(2000, 1, 1))
+geselecteerde_datum = st.sidebar.date_input("Datum ( of max. 2 jaar eerder !):", value=default_datum, min_value=date(2000, 1, 1))
 
 # Functie om graden naar windrichting te converteren
 def graden_naar_windrichting(graden):
@@ -243,7 +243,7 @@ MIGRATIE_LAT_MAX    = 56.0
 MIGRATIE_LON_MIN    = -9.5
 MIGRATIE_LON_MAX    = 15.3
 
-# 5-daagse voorspelling: vandaag + 5 dagen = 6 kaarten
+# 5-daagse voorspelling:  + 5 dagen = 6 kaarten
 MIGRATIE_FORECAST_DAYS  = 8
 MIGRATIE_FORECAST_HOURS = MIGRATIE_FORECAST_DAYS * 24   # = 192 uurlijkse waarden
 
@@ -579,9 +579,9 @@ def laad_zeebries_kustdata() -> tuple[list[list[dict]], list[str], str]:
     """
     sst_fallback = _NOORDZEE_SST_FALLBACK[date.today().month]
     punten = ZEEBRIES_VASTE_KUSTLOCATIES
-    vandaag = date.today()
+     = date.today()
     dag_datums = [
-        _dag_label_nl(vandaag + timedelta(days=i))
+        _dag_label_nl( + timedelta(days=i))
         for i in range(ZEEBRIES_HORIZON_DAYS)
     ]
 
@@ -1052,7 +1052,7 @@ def _pas_aanvoer_toe(days_data: list[list[dict]]) -> list[list[dict]]:
     - Floor op 0.30: er trekken altijd wel een paar vogels, ook bij blokkade
     - Gecorrigeerde score = ruwe score × supply_factor
 
-    Noot: voor dag 0 (vandaag) ontbreekt historische data voor Fr (gisteren) en
+    Noot: voor dag 0 () ontbreekt historische data voor Fr (gisteren) en
     Sp (eergisteren). Dag 0 van het raster wordt als proxy gebruikt. Dit is een
     conservatieve benadering.
     """
@@ -1103,7 +1103,7 @@ def _pas_aanvoer_toe(days_data: list[list[dict]]) -> list[list[dict]]:
 def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = None):
     """
     Haal 8-daagse weervoorspelling op voor alle geldige rasterpunten
-    (vandaag + 7 dagen). Zeepunten, VK, Ierland en Man-eiland zijn uitgefilterd.
+    ( + 7 dagen). Zeepunten, VK, Ierland en Man-eiland zijn uitgefilterd.
     Retourneert (days_data, dag_datums, opgehaald_om).
     days_data[i] = lijst van punt-dicts op basis van middagwaarden (12:00 UTC).
 
@@ -1112,8 +1112,8 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
       0.5  / 0.65      : ~50×50 km  (4× meer punten, langzamere laadtijd)
     """
     punten = migratie_genereer_rasterpunten(lat_step=lat_step, lon_step=lon_step)
-    vandaag = date.today()
-    dag_datums = [_dag_label_nl(vandaag + timedelta(days=i)) for i in range(MIGRATIE_FORECAST_DAYS)]
+     = date.today()
+    dag_datums = [_dag_label_nl( + timedelta(days=i)) for i in range(MIGRATIE_FORECAST_DAYS)]
 
     def verwerk_punt(punt: dict) -> tuple[list[dict], list[list[float]]]:
         hourly = _haal_weer_forecast_rasterpunt(punt)
@@ -1768,7 +1768,7 @@ with tabs[2]:
 
     # 8 kaarten onder elkaar — vandaag + dag +1 t/m +7
     for dag_idx, (raster_dag, dag_label) in enumerate(zip(days_data, dag_datums)):
-        dag_titel = "📅 if dag_idx == 0 else f"📅 {dag_idx}"
+        dag_titel = "📅 **Vandaag**" if dag_idx == 0 else f"📅 **Dag +{dag_idx}**"
         gem_score = (
             round(sum(p["score"] for p in raster_dag) / len(raster_dag) * 100)
             if raster_dag else 0
