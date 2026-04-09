@@ -243,7 +243,7 @@ MIGRATIE_LAT_MAX    = 56.0
 MIGRATIE_LON_MIN    = -9.5
 MIGRATIE_LON_MAX    = 15.3
 
-# 7-daagse voorspelling: vandaag + 7 dagen = 8 kaarten
+# 8-daagse voorspelling: vandaag + 7 dagen = 8 kaarten
 MIGRATIE_FORECAST_DAYS  = 8
 MIGRATIE_FORECAST_HOURS = MIGRATIE_FORECAST_DAYS * 24   # = 192 uurlijkse waarden
 
@@ -683,7 +683,7 @@ def migratie_bereken_score(weer, lat: float = 0.0, lon: float = 0.0):
     wind_kracht   = float(weer.get("wind_speed_10m", 0))
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
-    in_bene = _is_bene_corridorpunt(lat, lon)
+    in_bene = _is_bene_corridor_punt(lat, lon)
     override = _voorjaar_bene_wind_override(wind_richting, wind_kracht) if in_bene else None
 
     # Windrichting: zuidenwind (180°) = ideale rugwind voor noordwaartse trek
@@ -919,7 +919,7 @@ def _uur_waarde(lst, idx: int, standaard: float) -> float:
         return standaard
 
 
-def _interpoleer_lengtegraad_op_breedtegraad(
+def _interpoleer_lon_bij_lat(
     lat: float,
     lat0: float,
     lon0: float,
@@ -932,17 +932,17 @@ def _interpoleer_lengtegraad_op_breedtegraad(
     return lon0 + verhouding * (lon1 - lon0)
 
 
-def _is_bene_corridorpunt(lat: float, lon: float) -> bool:
+def _is_bene_corridor_punt(lat: float, lon: float) -> bool:
     if not (BENE_CORRIDOR_LAT_MIN <= lat <= BENE_CORRIDOR_LAT_MAX):
         return False
-    west_lon = _interpoleer_lengtegraad_op_breedtegraad(
+    west_lon = _interpoleer_lon_bij_lat(
         lat,
         BENE_CORRIDOR_LAT_MIN,
         BENE_CORRIDOR_WEST_SOUTH_LON,
         BENE_CORRIDOR_LAT_MAX,
         BENE_CORRIDOR_WEST_NORTH_LON,
     )
-    east_lon = _interpoleer_lengtegraad_op_breedtegraad(
+    east_lon = _interpoleer_lon_bij_lat(
         lat,
         BENE_CORRIDOR_LAT_MIN,
         BENE_CORRIDOR_EAST_SOUTH_LON,
@@ -1066,7 +1066,7 @@ def migratie_bereken_score_uitgebreid(
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
 
-    in_bene = _is_bene_corridorpunt(lat, lon)
+    in_bene = _is_bene_corridor_punt(lat, lon)
 
     if in_bene:
         override = _voorjaar_bene_wind_override(wind_richting, wind_kracht)
@@ -1184,7 +1184,7 @@ def _pas_aanvoer_toe(days_data: list[list[dict]]) -> list[list[dict]]:
         for punt in days_data[dag_idx]:
             lat = punt["latitude"]
             lon = punt["longitude"]
-            if _is_bene_corridorpunt(lat, lon):
+            if _is_bene_corridor_punt(lat, lon):
                 ruwe_score = punt["score"]
                 adj_score  = round(min(1.0, max(0.0, ruwe_score * supply_factor)), 3)
                 punt["score"]              = adj_score
@@ -1197,7 +1197,7 @@ def _pas_aanvoer_toe(days_data: list[list[dict]]) -> list[list[dict]]:
 
 
 @st.cache_data(ttl=1800)
-def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = None):
+def laad_migratie_rasterdata_8daags(lat_step: float = None, lon_step: float = None):
     """
     Haal 8-daagse weervoorspelling op voor alle geldige rasterpunten
     (vandaag + 7 dagen). Zeepunten, VK, Ierland en Man-eiland zijn uitgefilterd.
@@ -1273,7 +1273,7 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
             else:
                 weer = None
 
-            in_bene = _is_bene_corridorpunt(punt["latitude"], punt["longitude"])
+            in_bene = _is_bene_corridor_punt(punt["latitude"], punt["longitude"])
             wind_richting_txt = ""
             wind_kracht_txt   = ""
             temp_txt          = "?"
@@ -1800,12 +1800,12 @@ with tabs[2]:
         """)
 
     if st.button("🔄 Ververs nu", key="ververs_raster_8d"):
-        laad_migratie_rasterdata_6daags.clear()
+        laad_migratie_rasterdata_8daags.clear()
         laad_zeebries_kustdata.clear()
         st.rerun()
 
     with st.spinner("Weervoorspelling ophalen voor 8-daags migratieraster — even geduld..."):
-        days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag = laad_migratie_rasterdata_6daags()
+        days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag = laad_migratie_rasterdata_8daags()
 
     # Laad zeebries-data eenmalig voor alle dagkaarten
     _zb_per_dag: list[list[dict]] = [[] for _ in range(ZEEBRIES_HORIZON_DAYS)]
