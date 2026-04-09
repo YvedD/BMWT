@@ -2,7 +2,7 @@
 """
 Refresh migration prediction data for BMWT.
 
-Fetches a 6-day hourly weather forecast for a ~100 × 100 km raster over
+Fetches an 8-day hourly weather forecast for a ~100 × 100 km raster over
 Western Europe (anchored on Tarifa, Spain) and computes a migration-
 favourability score for each grid point per day.
 
@@ -47,8 +47,8 @@ LON_MIN     = -9.5
 LON_MAX     = 15.3
 
 MAX_WORKERS   = 20     # parallel HTTP workers
-FORECAST_DAYS = 6     # today + 5 days ahead
-FORECAST_HOURS = FORECAST_DAYS * 24   # = 144 hourly values
+FORECAST_DAYS = 8     # today + 7 days ahead
+FORECAST_HOURS = FORECAST_DAYS * 24   # = 192 hourly values
 
 # Flight altitude thresholds (km/h)
 VLIEGHOOGTE_GESTOPT_THRESHOLD = 50   # ≥ 7 Bf: migration suppressed
@@ -59,13 +59,15 @@ VLIEGHOOGTE_MIDDEL_MIN        = 12   # 3–4 Bf: mid-altitude
 CAPE_DEFAULT = 0.0
 BLH_DEFAULT  = 500.0
 
-# BE/NL regional SE-wind optimum
-# SE wind (135°, 3–5 Bf) is optimal for Belgium/Netherlands:
-# birds are pushed from central France to the North Sea coast.
-BENE_LAT_MIN        = 49.5
-BENE_LAT_MAX        = 53.5
-BENE_LON_MIN        = 2.0
-BENE_LON_MAX        = 8.0
+# BE/NL/NO-Frankrijk/NW-Duitsland corridorzone
+# Ondergrens: 50.0°N van 0.9°E t/m 13.9°E
+# Bovengrens: 55.0°N van 8.7°E t/m 12.6°E
+BENE_CORRIDOR_LAT_MIN = 50.0
+BENE_CORRIDOR_LAT_MAX = 55.0
+BENE_CORRIDOR_WEST_SOUTH_LON = 0.9
+BENE_CORRIDOR_WEST_NORTH_LON = 8.7
+BENE_CORRIDOR_EAST_SOUTH_LON = 13.9
+BENE_CORRIDOR_EAST_NORTH_LON = 12.6
 
 # Asymmetric directional falloff around ZO (135°):
 #   South side (toward ZZO/Z): slower decay
@@ -231,11 +233,43 @@ def build_grid_points() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Weather fetching (6-day hourly forecast)
+# Weather fetching (8-day hourly forecast)
 # ---------------------------------------------------------------------------
 
+def interpolate_lon_at_lat(
+    lat: float,
+    lat0: float,
+    lon0: float,
+    lat1: float,
+    lon1: float,
+) -> float:
+    if lat1 == lat0:
+        return lon0
+    ratio = (lat - lat0) / (lat1 - lat0)
+    return lon0 + ratio * (lon1 - lon0)
+
+
+def is_bene_corridor_point(lat: float, lon: float) -> bool:
+    if not (BENE_CORRIDOR_LAT_MIN <= lat <= BENE_CORRIDOR_LAT_MAX):
+        return False
+    west_lon = interpolate_lon_at_lat(
+        lat,
+        BENE_CORRIDOR_LAT_MIN,
+        BENE_CORRIDOR_WEST_SOUTH_LON,
+        BENE_CORRIDOR_LAT_MAX,
+        BENE_CORRIDOR_WEST_NORTH_LON,
+    )
+    east_lon = interpolate_lon_at_lat(
+        lat,
+        BENE_CORRIDOR_LAT_MIN,
+        BENE_CORRIDOR_EAST_SOUTH_LON,
+        BENE_CORRIDOR_LAT_MAX,
+        BENE_CORRIDOR_EAST_NORTH_LON,
+    )
+    return west_lon <= lon <= east_lon
+
 def fetch_forecast_weather(lat: float, lon: float) -> dict | None:
-    """Fetch 6-day hourly forecast for one point from Open-Meteo."""
+    """Fetch 8-day hourly forecast for one point from Open-Meteo."""
     params = urllib.parse.urlencode(
         {
             "latitude":     lat,
@@ -317,7 +351,7 @@ def compute_migration_score(
         (birds blown eastward over the North Sea); west penalty is replaced by a
         sea-migration bonus.
 
-    BE/NL regional correction (BENE_LAT/LON_MIN/MAX):
+    BE/NL corridor correction:
       SE wind (≈ 135°, 3–5 Bf) is optimal for Belgium/Netherlands — birds are
       pushed from central France toward the North Sea coast.
       Wind direction formula shifts optimal from 180° (S, general) to 135° (SE):
@@ -330,10 +364,7 @@ def compute_migration_score(
     wind_speed = float(weather.get("wind_speed_10m", 0))
     wind_dir   = float(weather.get("wind_direction_10m", 180))
     temp       = float(weather.get("temperature_2m", 12))
-    in_bene = (
-        BENE_LAT_MIN <= lat <= BENE_LAT_MAX
-        and BENE_LON_MIN <= lon <= BENE_LON_MAX
-    )
+    in_bene = is_bene_corridor_point(lat, lon)
 
     if in_bene:
         override = bene_spring_wind_override(wind_dir, wind_speed)
@@ -462,7 +493,7 @@ def apply_supply_chain_correction(results: list[dict]) -> list[dict]:
     for r in results:
         lat = r["latitude"]
         lon = r["longitude"]
-        if not (BENE_LAT_MIN <= lat <= BENE_LAT_MAX and BENE_LON_MIN <= lon <= BENE_LON_MAX):
+        if not is_bene_corridor_point(lat, lon):
             continue
         for day_idx, day_data in enumerate(r["days"]):
             fr_day        = max(0, day_idx - SUPPLY_LAG_FRANCE)
@@ -489,10 +520,7 @@ def process_point(point: dict) -> dict:
     lat = point["latitude"]
     lon = point["longitude"]
     hourly = fetch_forecast_weather(lat, lon)
-    in_bene = (
-        BENE_LAT_MIN <= lat <= BENE_LAT_MAX
-        and BENE_LON_MIN <= lon <= BENE_LON_MAX
-    )
+    in_bene = is_bene_corridor_point(lat, lon)
     days = []
     for day_idx in range(FORECAST_DAYS):
         cape_list = (hourly.get("cape") or [CAPE_DEFAULT] * FORECAST_HOURS) if hourly else [CAPE_DEFAULT] * FORECAST_HOURS
@@ -593,7 +621,7 @@ def build_payload() -> dict:
     return {
         "updated_at":    datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "ttl_minutes":   60,
-        "source":        "bmwt-github-actions-v4-tarifa-raster-6day-supply-chain-24h-avg",
+        "source":        "bmwt-github-actions-v5-tarifa-raster-8day-supply-chain-24h-avg",
         "raster": {
             "anchor_lat":    ANCHOR_LAT,
             "anchor_lon":    ANCHOR_LON,
@@ -628,7 +656,7 @@ def write_json_atomically(path: Path, payload: dict) -> None:
 if __name__ == "__main__":
     output_path = Path(os.environ.get("BMWT_MIGRATION_OUTPUT_PATH", str(OUTPUT_PATH)))
     print(
-        f"Building 6-day migration raster payload "
+        f"Building 8-day migration raster payload "
         f"({LAT_MAX - LAT_MIN:.0f}° lat × {LON_MAX - LON_MIN:.1f}° lon, "
         f"step {LAT_STEP}°×{LON_STEP}°, land/UK filtered)…"
     )
