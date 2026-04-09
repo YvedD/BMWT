@@ -243,7 +243,7 @@ MIGRATIE_LAT_MAX    = 56.0
 MIGRATIE_LON_MIN    = -9.5
 MIGRATIE_LON_MAX    = 15.3
 
-# 7-daagse voorspelling: vandaag + 7 dagen = 8 kaarten
+# 7-daagse voorspelling: vandaag + 7 extra dagen = 8 kaarten
 MIGRATIE_FORECAST_DAYS  = 8
 MIGRATIE_FORECAST_HOURS = MIGRATIE_FORECAST_DAYS * 24   # = 192 uurlijkse waarden
 
