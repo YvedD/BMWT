@@ -244,8 +244,8 @@ MIGRATIE_LON_MIN    = -9.5
 MIGRATIE_LON_MAX    = 15.3
 
 # 5-daagse voorspelling: vandaag + 5 dagen = 6 kaarten
-MIGRATIE_FORECAST_DAYS  = 10
-MIGRATIE_FORECAST_HOURS = MIGRATIE_FORECAST_DAYS * 24   # = 144 uurlijkse waarden
+MIGRATIE_FORECAST_DAYS  = 8
+MIGRATIE_FORECAST_HOURS = MIGRATIE_FORECAST_DAYS * 24   # = 192 uurlijkse waarden
 
 # Vlieghoogte-drempelwaarden (km/h)
 VLIEGHOOGTE_LAAG_MIN         = 29    # 5–6 Bf: vogels vliegen laag (waarneembaar)
@@ -682,30 +682,15 @@ def migratie_bereken_score(weer, lat: float = 0.0, lon: float = 0.0):
     wind_kracht   = float(weer.get("wind_speed_10m", 0))
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
-    in_bene = (
-        BENE_LAT_MIN <= lat <= BENE_LAT_MAX
-        and BENE_LON_MIN <= lon <= BENE_LON_MAX
-    )
-    override = _voorjaar_bene_wind_override(wind_richting, wind_kracht) if in_bene else None
 
-    # Windrichting: zuidenwind (180°) = ideale rugwind voor noordwaartse trek
-    #   Zuid-component verhoogt de score; West-component verlaagt de score.
-    #   Uitzondering: sterke NW/W wind (>6 Bf) → geweldige migratie over zee
-    #     (vogels worden oostwaarts geblazen over de Noordzee).
-    if override == "zero":
-        wind_richting_score = 0.0
-    elif override == "max":
-        wind_richting_score = 1.0
+    # Gebruik universele (niet-regionale) scoring — behandel alle punten gelijk
+    south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
+    west_component = max(0.0, -math.sin(math.radians(wind_richting)))
+    is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
+    if is_nw_w_sterk:
+        wind_richting_score = min(1.0, south_score + west_component * WIND_SEA_BONUS)
     else:
-        south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
-        west_component = max(0.0, -math.sin(math.radians(wind_richting)))
-        is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
-        if is_nw_w_sterk:
-            # Sterke NW/W: West-straf vervalt; West-component levert zeemigratiebonus op
-            wind_richting_score = min(1.0, south_score + west_component * WIND_SEA_BONUS)
-        else:
-            # Meer West-component → lagere score; meer Zuid-component → hogere score
-            wind_richting_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
+        wind_richting_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
 
     temp_score = _temperatuur_score(temperatuur)
 
@@ -922,7 +907,7 @@ def _uur_waarde(lst, idx: int, standaard: float) -> float:
 
 
 def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
-    """Haal 6-daagse uurlijkse weervoorspelling op voor één rasterpunt.
+    """Haal 8-daagse uurlijkse weervoorspelling op voor één rasterpunt.
 
     Probeert tot 3 keer bij tijdelijke fouten of rate-limiting (HTTP 429).
     """
@@ -935,7 +920,7 @@ def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
             "pressure_msl,cape,boundary_layer_height"
         ),
         "timezone": "UTC",
-        "forecast_days": 6,
+        "forecast_days": MIGRATIE_FORECAST_DAYS,
     }
     for poging in range(3):
         try:
@@ -1013,20 +998,9 @@ def migratie_bereken_score_uitgebreid(
       70 % windrichting   (regionaal gecorrigeerd — zie hieronder)
       30 % temperatuur    (via manueel aanpasbare temperatuur-puntenreeks)
 
-    Windrichtings-correctie (algemeen en BE/NL):
-      Zuid-component (wind uit Z, ZZO, ZZW …) verhoogt de score.
-      West-component (wind uit W, ZW, NW …) verlaagt de score.
-      Uitzondering: heel sterke NW/W wind (>6 Bf) levert geweldige zeemigratie
-        op (vogels worden oostwaarts geblazen over de Noordzee), waardoor de
-        West-straf vervalt en een zeemigratiebonus wordt toegekend.
-
-    Regionale correctie BE/NL (BENE_LAT/LON_MIN/MAX):
-      De beste trekdagen voor België en Nederland worden bepaald door ZO-wind
-      (≈ 135°, 3–5 Bf). Vogels worden dan vanuit centraal-Frankrijk naar de
-      Noordzeekust gestuwd. De windrichting-formule verschuift het optimum van
-      180° (Z, algemeen) naar 135° (ZO, BE/NL):
-        score = (1 - cos(wind_richting + 45°)) / 2  → max bij 135°
-      De windkracht-drempel verschuift naar 3–5 Bf (12–38 km/h).
+    Regionale correcties zijn uitgeschakeld: alle punten gebruiken nu de
+    algemene (niet-BE/NL) logica, zodat het rastergebied boven BE/NL/FR/DE
+    op dezelfde manier verwerkt wordt als de rest van Europa.
     """
     if not weer:
         return 0.5
@@ -1035,57 +1009,14 @@ def migratie_bereken_score_uitgebreid(
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
 
-    in_bene = (
-        BENE_LAT_MIN <= lat <= BENE_LAT_MAX
-        and BENE_LON_MIN <= lon <= BENE_LON_MAX
-    )
-
-    if in_bene:
-        override = _voorjaar_bene_wind_override(wind_richting, wind_kracht)
-        if override == "zero":
-            wind_richting_score = 0.0
-        elif override == "max":
-            wind_richting_score = 1.0
-        else:
-            # --- BE/NL asymmetric wind direction score ---
-            # Peak at ZO (135°). Angular distance from ZO:
-            #   positive δ  = clockwise toward ZZO → Z → ZW → W  (southerly component)
-            #   negative δ  = counter-clockwise toward OZO → O → N (easterly component)
-            # Slower decay toward the south (ZZO scores higher than OZO at equal angular
-            # distance), faster decay toward the east, so:
-            #   ZO (135°) > ZZO (157.5°) > OZO (112.5°) > Z (180°) > O (90°) > N/W ≈ 0
-            delta = ((wind_richting - BENE_WIND_OPT_DIR) + 180.0) % 360.0 - 180.0
-            if delta >= 0:
-                # South side: reach 0 at BENE_WIND_FALLOFF_S degrees past ZO (= near W)
-                wind_richting_score = max(
-                    0.0, math.cos(math.radians(delta * 180.0 / BENE_WIND_FALLOFF_S))
-                )
-            else:
-                # East side: reach 0 at BENE_WIND_FALLOFF_E degrees before ZO (= near N)
-                wind_richting_score = max(
-                    0.0, math.cos(math.radians(abs(delta) * 180.0 / BENE_WIND_FALLOFF_E))
-                )
-
-            # --- BE/NL West-component correctie ---
-            # West-component verlaagt de score; uitzondering: sterke NW/W (>6 Bf)
-            # → vogels worden oostwaarts geblazen over de Noordzee (zeemigratie).
-            west_component = max(0.0, -math.sin(math.radians(wind_richting)))
-            is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
-            if is_nw_w_sterk:
-                wind_richting_score = min(1.0, wind_richting_score + west_component * WIND_SEA_BONUS)
-            else:
-                wind_richting_score = max(0.0, wind_richting_score - WIND_WEST_PENALTY * west_component)
+    # Universele scoring (geen BE/NL-aanpassing)
+    south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
+    west_component = max(0.0, -math.sin(math.radians(wind_richting)))
+    is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
+    if is_nw_w_sterk:
+        wind_richting_score = min(1.0, south_score + west_component * WIND_SEA_BONUS)
     else:
-        # Algemeen: Z-wind (180°) = ideale rugwind; N (0°/360°) = tegenwind.
-        # Zuid-component verhoogt de score; West-component verlaagt de score.
-        # Uitzondering: sterke NW/W wind (>6 Bf) → geweldige migratie over zee.
-        south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
-        west_component = max(0.0, -math.sin(math.radians(wind_richting)))
-        is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
-        if is_nw_w_sterk:
-            wind_richting_score = min(1.0, south_score + west_component * WIND_SEA_BONUS)
-        else:
-            wind_richting_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
+        wind_richting_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
 
     temp_score = _temperatuur_score(temperatuur)
 
@@ -1171,8 +1102,8 @@ def _pas_aanvoer_toe(days_data: list[list[dict]]) -> list[list[dict]]:
 @st.cache_data(ttl=1800)
 def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = None):
     """
-    Haal 6-daagse weervoorspelling op voor alle geldige rasterpunten
-    (vandaag + 5 dagen). Zeepunten, VK, Ierland en Man-eiland zijn uitgefilterd.
+    Haal 8-daagse weervoorspelling op voor alle geldige rasterpunten
+    (vandaag + 7 dagen). Zeepunten, VK, Ierland en Man-eiland zijn uitgefilterd.
     Retourneert (days_data, dag_datums, opgehaald_om).
     days_data[i] = lijst van punt-dicts op basis van middagwaarden (12:00 UTC).
 
@@ -1286,7 +1217,7 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
                 "vlieghoogte":      vlieghoogte_lbl,
                 "vlieghoogte_tip":  vlieghoogte_tip,
                 "marker_radius":    marker_radius,
-                "be_nl_zone":       in_bene,
+                "be_nl_zone":       False,  # Treat all points equally; no special BE/NL flag
                 "uurscores":        uurscores,
                 "uurweer":          uurweer,
             })
@@ -1305,7 +1236,8 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
 
     # Pas aanvoercorrectie toe: BE/NL-scores worden verminderd als France/Spanje
     # de dag ervoor slechte omstandigheden hadden (regen, tegenwind).
-    days_data = _pas_aanvoer_toe(days_data)
+    # De supply-correctie is uitgeschakeld — behandel de hele rastergebied gelijk.
+    # days_data = _pas_aanvoer_toe(days_data)
 
     # Tijdlijndata: gemiddelde uurlijkse migratiescore over alle rasterpunten per dag
     n_tijdlijn_punten = len(alle_uurscores)
@@ -1778,7 +1710,7 @@ with tabs[2]:
         laad_zeebries_kustdata.clear()
         st.rerun()
 
-    with st.spinner("Weervoorspelling ophalen voor 6-daags migratieraster — even geduld..."):
+    with st.spinner("Weervoorspelling ophalen voor 8-daags migratieraster — even geduld..."):
         days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag = laad_migratie_rasterdata_6daags()
 
     # Laad zeebries-data eenmalig voor alle dagkaarten
@@ -1804,7 +1736,7 @@ with tabs[2]:
     if _zb_laad_fout:
         st.warning("⚠️ Zeebries-voorspelling kon niet worden opgehaald. Kustkaarten tonen geen zeebries-vlaggen.")
 
-    # Gedeelde kleurlegende (eenmalig boven alle 6 kaarten)
+    # Gedeelde kleurlegende (eenmalig boven alle 8 kaarten)
     st.markdown(
         """
         <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;
@@ -1834,7 +1766,7 @@ with tabs[2]:
         unsafe_allow_html=True,
     )
 
-    # 6 kaarten onder elkaar — vandaag + dag +1 t/m +5
+    # 8 kaarten onder elkaar — vandaag + dag +1 t/m +7
     for dag_idx, (raster_dag, dag_label) in enumerate(zip(days_data, dag_datums)):
         dag_titel = "📅 **Vandaag**" if dag_idx == 0 else f"📅 **Dag +{dag_idx}**"
         gem_score = (
