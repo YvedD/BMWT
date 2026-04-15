@@ -91,6 +91,17 @@ _STANDAARD_SCORE_GEWICHTEN: dict = {
         "lag_france": 1,
         "lag_spain": 2,
     },
+    "weerblokkade": {
+        "history_days": 3,
+        "neerslag_drempel_mm": 5.0,
+        "zicht_drempel_m": 5000,
+        "tegenwind_richtingen": ["N", "NNO", "NNW", "NW", "W", "WNW", "WZW"],
+        "tegenwind_bf_min": 4,
+        "max_penalty": 0.40,
+        "gewicht_dag_min1": 0.50,
+        "gewicht_dag_min2": 0.30,
+        "gewicht_dag_min3": 0.20,
+    },
 }
 
 
@@ -336,7 +347,10 @@ MIGRATIE_LON_MAX    = 15.3
 
 # 5-daagse voorspelling: vandaag + 5 dagen = 6 kaarten
 MIGRATIE_FORECAST_DAYS  = 8
+MIGRATIE_HISTORY_DAYS   = 3      # historische dagen voor weerblokkade-analyse
+MIGRATIE_TOTAL_DAYS     = MIGRATIE_HISTORY_DAYS + MIGRATIE_FORECAST_DAYS   # = 11
 MIGRATIE_FORECAST_HOURS = MIGRATIE_FORECAST_DAYS * 24   # = 192 uurlijkse waarden
+MIGRATIE_TOTAL_HOURS    = MIGRATIE_TOTAL_DAYS * 24      # = 264 uurlijkse waarden
 
 # Vlieghoogte-drempelwaarden (km/h)
 VLIEGHOOGTE_LAAG_MIN         = 29    # 5–6 Bf: vogels vliegen laag (waarneembaar)
@@ -1057,8 +1071,10 @@ def _daglichttijden_per_dag(n_dagen: int, ref_lat: float = KAART_CENTER_LAT,
 
 
 def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
-    """Haal 8-daagse uurlijkse weervoorspelling op voor één rasterpunt.
+    """Haal 8-daagse forecast + 3 historische dagen op voor één rasterpunt.
 
+    De historische dagen worden NIET getoond op de kaartjes maar worden
+    intern gebruikt om een weerblokkade-factor te berekenen.
     Probeert tot 3 keer bij tijdelijke fouten of rate-limiting (HTTP 429).
     """
     params = {
@@ -1070,6 +1086,7 @@ def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
             "pressure_msl,cape,boundary_layer_height"
         ),
         "timezone": "UTC",
+        "past_days": MIGRATIE_HISTORY_DAYS,
         "forecast_days": MIGRATIE_FORECAST_DAYS,
     }
     for poging in range(3):
@@ -1121,6 +1138,72 @@ def _voorjaar_bene_wind_override(wind_richting: float, wind_kracht: float) -> st
     if richting in max_strikt and wind_kracht < ws["bf3_min"]:
         return "max"
     return None
+
+
+def _bereken_weerblokkade(hourly: dict | None) -> float:
+    """Bereken een weerblokkade-factor op basis van historisch weer (3 dagen).
+
+    Analyseert de eerste ``MIGRATIE_HISTORY_DAYS`` dagen (72 uur) van de
+    uurlijkse arrays op ongunstige omstandigheden: zware neerslag,
+    tegenwind en slecht zicht.
+
+    Retourneert een factor in [1 − max_penalty, 1.0] die vermenigvuldigd
+    wordt met de forecast-migratiescores.  1.0 = geen blokkade.
+    """
+    cfg = _cfg()
+    wb = cfg.get("weerblokkade", {})
+    history_days     = int(wb.get("history_days", MIGRATIE_HISTORY_DAYS))
+    neerslag_drempel = float(wb.get("neerslag_drempel_mm", 5.0))
+    zicht_drempel    = float(wb.get("zicht_drempel_m", 5000))
+    tegenwind_dirs   = frozenset(wb.get("tegenwind_richtingen",
+                                        ["N", "NNO", "NNW", "NW", "W", "WNW", "WZW"]))
+    tegenwind_bf_min = int(wb.get("tegenwind_bf_min", 4))
+    max_penalty      = float(wb.get("max_penalty", 0.40))
+    gewichten        = (
+        float(wb.get("gewicht_dag_min1", 0.50)),
+        float(wb.get("gewicht_dag_min2", 0.30)),
+        float(wb.get("gewicht_dag_min3", 0.20)),
+    )
+
+    if not hourly or history_days <= 0:
+        return 1.0
+
+    dag_blokkade_scores: list[float] = []
+    for dag_idx in range(history_days):
+        penalties: list[float] = []
+        for uur in range(24):
+            h_idx = dag_idx * 24 + uur
+            try:
+                neerslag = float((hourly.get("precipitation") or [])[h_idx] or 0)
+                zicht    = float((hourly.get("visibility") or [])[h_idx] or 10000)
+                wind_dir = float((hourly.get("wind_direction_10m") or [])[h_idx] or 180)
+                wind_spd = float((hourly.get("wind_speed_10m") or [])[h_idx] or 0)
+            except (IndexError, TypeError):
+                continue
+
+            p = 0.0
+            if neerslag >= neerslag_drempel:
+                p = max(p, min(1.0, neerslag / (neerslag_drempel * 3)))
+            if zicht < zicht_drempel:
+                p = max(p, 1.0 - zicht / zicht_drempel)
+            richting = graden_naar_windrichting(wind_dir)
+            bf = _kmh_naar_beaufort_klasse(wind_spd)
+            if richting in tegenwind_dirs and bf >= tegenwind_bf_min:
+                p = max(p, min(1.0, bf / 6))
+            penalties.append(p)
+
+        dag_blokkade_scores.append(
+            sum(penalties) / len(penalties) if penalties else 0.0
+        )
+
+    # Gewogen som: dag_min1 (gisteren) heeft hoogste gewicht
+    gewogen = 0.0
+    for i, bs in enumerate(reversed(dag_blokkade_scores)):
+        if i < len(gewichten):
+            gewogen += gewichten[i] * bs
+    gewogen = min(1.0, gewogen)
+
+    return round(1.0 - max_penalty * gewogen, 3)
 
 
 def _interpoleer_score_puntsgewijs(waarde: float, punten) -> float:
@@ -1275,9 +1358,17 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
         hourly = _haal_weer_forecast_rasterpunt(punt)
         dag_punten = []
         uurscores_per_dag: list[list[float]] = []  # 24 uurlijkse scores per dag, voor tijdlijn
+
+        # Bereken weerblokkade-factor op basis van historisch weer (3 dagen vóór vandaag)
+        blokkade_factor = _bereken_weerblokkade(hourly)
+
+        # Offset: de eerste MIGRATIE_HISTORY_DAYS * 24 uur in de arrays zijn
+        # historische data.  Forecast-data begint bij index history_offset.
+        history_offset = MIGRATIE_HISTORY_DAYS * 24
+
         for dag_idx in range(MIGRATIE_FORECAST_DAYS):
-            cape_lijst = (hourly.get("cape") or [0] * MIGRATIE_FORECAST_HOURS) if hourly else [0] * MIGRATIE_FORECAST_HOURS
-            blh_lijst  = (hourly.get("boundary_layer_height") or [500] * MIGRATIE_FORECAST_HOURS) if hourly else [500] * MIGRATIE_FORECAST_HOURS
+            cape_lijst = (hourly.get("cape") or [0] * MIGRATIE_TOTAL_HOURS) if hourly else [0] * MIGRATIE_TOTAL_HOURS
+            blh_lijst  = (hourly.get("boundary_layer_height") or [500] * MIGRATIE_TOTAL_HOURS) if hourly else [500] * MIGRATIE_TOTAL_HOURS
 
             sr_uur, ss_uur = daglicht_per_dag[dag_idx]
 
@@ -1285,7 +1376,7 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
             uurscores: list[float] = []
             uurweer: list = []  # uurlijkse weerwaarden voor popup (raw floats)
             for uur in range(24):
-                uur_idx = dag_idx * 24 + uur
+                uur_idx = history_offset + dag_idx * 24 + uur
                 if hourly:
                     uur_weer = {
                         "temperature_2m":       _uur_waarde(hourly.get("temperature_2m"),     uur_idx, 12.0),
@@ -1314,12 +1405,13 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
                     uurweer.append(None)
             uurscores_per_dag.append(uurscores)
 
-            # Dagelijkse score = gemiddelde over enkel de daglichturen
+            # Dagelijkse score = gemiddelde over enkel de daglichturen, gecorrigeerd met blokkade
             daglicht_scores = uurscores[sr_uur:ss_uur + 1]
-            score = round(sum(daglicht_scores) / len(daglicht_scores), 3) if daglicht_scores else 0.5
+            raw_score = round(sum(daglicht_scores) / len(daglicht_scores), 3) if daglicht_scores else 0.5
+            score = round(min(1.0, max(0.0, raw_score * blokkade_factor)), 3)
 
             # Weerdisplay op 12:00 UTC voor popup / tooltip
-            middag_idx = dag_idx * 24 + 12
+            middag_idx = history_offset + dag_idx * 24 + 12
             if hourly:
                 weer = {
                     "temperature_2m":       _uur_waarde(hourly.get("temperature_2m"),     middag_idx, 12.0),
@@ -1377,6 +1469,7 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
                 "vlieghoogte_tip":  vlieghoogte_tip,
                 "marker_radius":    marker_radius,
                 "be_nl_zone":       False,  # Treat all points equally; no special BE/NL flag
+                "blokkade_factor":  blokkade_factor,
                 "uurscores":        uurscores,
                 "uurweer":          uurweer,
             })
@@ -2038,6 +2131,8 @@ with tabs[2]:
                 f"🌀 BLH: {disp_blh} m<br>"
                 f"<b>🦅 Vlieghoogte: {vh_lbl}</b><br>"
                 f"<i style='font-size:11px;color:#555'>{vh_tip}</i>"
+                f"<br><span style='color:#7b5ea7;font-size:11px;'>"
+                f"🛡️ Weerblokkade: {int(punt.get('blokkade_factor', 1.0) * 100)}%</span>"
                 f"<br><i style='font-size:10px;color:#888'>{weerdisplay_note}</i>"
                 + (
                     f"<br><span style='color:#c47000;font-size:11px;'>"
