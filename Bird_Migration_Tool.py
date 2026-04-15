@@ -17,6 +17,8 @@ import streamlit.components.v1 as components
 from timezonefinder import TimezoneFinder
 from soorten_geluiden import iframe_data
 import altair as alt
+from astral import LocationInfo
+from astral.sun import sun
 
 _TF = TimezoneFinder()
 
@@ -906,6 +908,32 @@ def _uur_waarde(lst, idx: int, standaard: float) -> float:
         return standaard
 
 
+def _daglichttijden_per_dag(n_dagen: int, ref_lat: float = KAART_CENTER_LAT,
+                           ref_lon: float = KAART_CENTER_LON) -> list[tuple[int, int]]:
+    """Bereken zonsopgang- en zonsonderganguur (UTC) voor elk van de n_dagen.
+
+    Gebruikt het referentiepunt (standaard: kaartcentrum 48°N 4.8°E) via de
+    ``astral``-bibliotheek. Retourneert een lijst van (sunrise_hour, sunset_hour)
+    tuples afgerond op hele uren.
+    """
+    loc = LocationInfo(latitude=ref_lat, longitude=ref_lon)
+    vandaag = date.today()
+    result: list[tuple[int, int]] = []
+    for i in range(n_dagen):
+        dag = vandaag + timedelta(days=i)
+        try:
+            s = sun(loc.observer, date=dag, tzinfo=timezone.utc)
+            sr = s["sunrise"].hour
+            ss = s["sunset"].hour
+            # Garandeer minimaal bereik 06–20 als fallback
+            sr = min(sr, 8)
+            ss = max(ss, 17)
+        except Exception:
+            sr, ss = 6, 20
+        result.append((sr, ss))
+    return result
+
+
 def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
     """Haal 8-daagse uurlijkse weervoorspelling op voor één rasterpunt.
 
@@ -1115,6 +1143,9 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
     vandaag = date.today()
     dag_datums = [_dag_label_nl(vandaag + timedelta(days=i)) for i in range(MIGRATIE_FORECAST_DAYS)]
 
+    # Bereken daglichttijden (sunrise/sunset uur UTC) per dag voor referentiepunt
+    daglicht_per_dag = _daglichttijden_per_dag(MIGRATIE_FORECAST_DAYS)
+
     def verwerk_punt(punt: dict) -> tuple[list[dict], list[list[float]]]:
         hourly = _haal_weer_forecast_rasterpunt(punt)
         dag_punten = []
@@ -1122,6 +1153,8 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
         for dag_idx in range(MIGRATIE_FORECAST_DAYS):
             cape_lijst = (hourly.get("cape") or [0] * MIGRATIE_FORECAST_HOURS) if hourly else [0] * MIGRATIE_FORECAST_HOURS
             blh_lijst  = (hourly.get("boundary_layer_height") or [500] * MIGRATIE_FORECAST_HOURS) if hourly else [500] * MIGRATIE_FORECAST_HOURS
+
+            sr_uur, ss_uur = daglicht_per_dag[dag_idx]
 
             # --- Uurlijkse scores (alle 24 uur) voor tijdlijnvisualisatie en daggemiddelde ---
             uurscores: list[float] = []
@@ -1156,8 +1189,9 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
                     uurweer.append(None)
             uurscores_per_dag.append(uurscores)
 
-            # Dagelijkse score = gemiddelde over alle 24 uur (vroeger: uitsluitend 12:00 UTC)
-            score = round(sum(uurscores) / len(uurscores), 3) if uurscores else 0.5
+            # Dagelijkse score = gemiddelde over enkel de daglichturen
+            daglicht_scores = [uurscores[u] for u in range(24) if sr_uur <= u <= ss_uur]
+            score = round(sum(daglicht_scores) / len(daglicht_scores), 3) if daglicht_scores else 0.5
 
             # Weerdisplay op 12:00 UTC voor popup / tooltip
             middag_idx = dag_idx * 24 + 12
@@ -1257,7 +1291,7 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
         uurgemiddelden_per_dag.append(uurgemiddelden)
 
     opgehaald_om = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-    return days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag
+    return days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag, daglicht_per_dag
 
 
 # Controleer wijzigingen in invoer (gebruik session_state)
@@ -1654,7 +1688,7 @@ with tabs[2]:
 
     **Ankerpunt:** Tarifa (Spanje) — de klassieke doortochtpoort vanuit Afrika (Gibraltar-corridor).
 
-    **Wetenschappelijke factoren (gemiddeld over alle 24 uur per dag — dag én nacht):**
+    **Wetenschappelijke factoren (gemiddeld over de daglichturen — zonsopgang tot zonsondergang):**
     - 🧭 **Windrichting** (35 %): zuidenwind = rugwind voor noordwaartse voorjaarstrek
     - 🌧️ **Neerslag** (20 %): droog = gunstig — regenfronten zorgen voor stoppers
     - 📊 **Luchtdruk** (10 %): hogedrukgebied (> 1015 hPa) = stabiele omstandigheden
@@ -1711,7 +1745,7 @@ with tabs[2]:
         st.rerun()
 
     with st.spinner("Weervoorspelling ophalen voor 8-daags migratieraster — even geduld..."):
-        days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag = laad_migratie_rasterdata_6daags()
+        days_data, dag_datums, opgehaald_om, uurgemiddelden_per_dag, daglicht_per_dag = laad_migratie_rasterdata_6daags()
 
     # Laad zeebries-data eenmalig voor alle dagkaarten
     _zb_per_dag: list[list[dict]] = [[] for _ in range(ZEEBRIES_HORIZON_DAYS)]
@@ -1785,15 +1819,24 @@ with tabs[2]:
             vh_meest = "?"
 
         # Initialiseer sessie-state voor uur-selectie als nog niet aanwezig
+        sr_uur_dag, ss_uur_dag = daglicht_per_dag[dag_idx]
+        _daglicht_bereik = list(range(sr_uur_dag, ss_uur_dag + 1))
         if f"uur_radio_{dag_idx}" not in st.session_state:
             st.session_state[f"uur_radio_{dag_idx}"] = "📊 Dag"
         _uur_keuze_val = st.session_state[f"uur_radio_{dag_idx}"]
+        # Reset naar "Dag" als het eerder gekozen uur buiten de daglichturen valt
+        if _uur_keuze_val != "📊 Dag":
+            _gekozen_h = int(_uur_keuze_val.split(":")[0])
+            if _gekozen_h not in _daglicht_bereik:
+                st.session_state[f"uur_radio_{dag_idx}"] = "📊 Dag"
+                _uur_keuze_val = "📊 Dag"
         selected_uur = None if _uur_keuze_val == "📊 Dag" else int(_uur_keuze_val.split(":")[0])
 
         uur_label = f" · uur {selected_uur:02d}:00 UTC" if selected_uur is not None else ""
+        daglicht_label = f" · ☀️ {sr_uur_dag:02d}:00–{ss_uur_dag:02d}:00 UTC"
         # Toon eenduidig formaat: emoji + daglabel gevolgd door metadata
         st.markdown(
-            f"### {dag_titel} · gem. score: {gem_score}/100 · vlieghoogte: {vh_meest}{uur_label}"
+            f"### {dag_titel} · gem. score: {gem_score}/100 · vlieghoogte: {vh_meest}{uur_label}{daglicht_label}"
         )
 
         col_kaart, col_uren = st.columns([4, 1])
@@ -1846,7 +1889,7 @@ with tabs[2]:
             weerdisplay_note = (
                 f"Weerdisplay: {selected_uur:02d}:00 UTC"
                 if selected_uur is not None
-                else "Weerdisplay: 12:00 UTC · Score: 24-uurs gemiddelde"
+                else "Weerdisplay: 12:00 UTC · Score: daglichturen"
             )
             popup_html = (
                 f"<div style='font-size:13px;min-width:210px;'>"
@@ -1970,7 +2013,59 @@ with tabs[2]:
             )
 
         with col_uren:
-            _uur_opties = ["📊 Dag"] + [f"{h:02d}:00" for h in range(24)]
+            sr_uur, ss_uur = daglicht_per_dag[dag_idx]
+            _daglicht_uren = list(range(sr_uur, ss_uur + 1))
+            _uur_opties = ["📊 Dag"] + [f"{h:02d}:00" for h in _daglicht_uren]
+
+            # --- Klok-SVG: visueel horloge met daglichturen ---
+            _r = 70           # straal van de klok
+            _cx, _cy = 85, 85  # centrum
+            _n_uren = len(_daglicht_uren)
+            _hoek_stap = 360 / max(_n_uren, 1)
+            svg_parts = [
+                f'<svg width="170" height="170" viewBox="0 0 170 170" xmlns="http://www.w3.org/2000/svg">',
+                # Achtergrondcirkel
+                f'<circle cx="{_cx}" cy="{_cy}" r="{_r}" fill="#f8f8f0" stroke="#ccc" stroke-width="2"/>',
+            ]
+            for i, h in enumerate(_daglicht_uren):
+                hoek_rad = math.radians(-90 + i * _hoek_stap)
+                x = _cx + _r * 0.82 * math.cos(hoek_rad)
+                y = _cy + _r * 0.82 * math.sin(hoek_rad)
+                is_selected = (selected_uur == h)
+                # Markering voor het geselecteerde uur
+                if is_selected:
+                    svg_parts.append(
+                        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="12" fill="#2196F3" opacity="0.3"/>'
+                    )
+                fs = "11" if is_selected else "9"
+                fw = "bold" if is_selected else "normal"
+                fill = "#2196F3" if is_selected else "#333"
+                svg_parts.append(
+                    f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="middle" '
+                    f'dominant-baseline="central" font-size="{fs}" '
+                    f'font-weight="{fw}" fill="{fill}">{h:02d}</text>'
+                )
+            # Centraal label
+            _centrum_tekst = f"{selected_uur:02d}h" if selected_uur is not None else "Dag"
+            svg_parts.append(
+                f'<text x="{_cx}" y="{_cy}" text-anchor="middle" '
+                f'dominant-baseline="central" font-size="14" font-weight="bold" '
+                f'fill="#333">☀️ {_centrum_tekst}</text>'
+            )
+            # Wijzer naar geselecteerd uur
+            if selected_uur is not None and selected_uur in _daglicht_uren:
+                _sel_i = _daglicht_uren.index(selected_uur)
+                _sel_hoek = math.radians(-90 + _sel_i * _hoek_stap)
+                _wx = _cx + _r * 0.55 * math.cos(_sel_hoek)
+                _wy = _cy + _r * 0.55 * math.sin(_sel_hoek)
+                svg_parts.append(
+                    f'<line x1="{_cx}" y1="{_cy}" x2="{_wx:.1f}" y2="{_wy:.1f}" '
+                    f'stroke="#2196F3" stroke-width="2.5" stroke-linecap="round"/>'
+                )
+            svg_parts.append('</svg>')
+            st.markdown("".join(svg_parts), unsafe_allow_html=True)
+
+            # Compacte selectbox voor uurselectie (enkel daglichturen)
             st.radio(
                 "Uur (UTC):",
                 _uur_opties,
