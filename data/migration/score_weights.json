@@ -58,5 +58,17 @@
     "factor_range": 0.70,
     "lag_france": 1,
     "lag_spain": 2
+  },
+  "weerblokkade": {
+    "_info": "Weerblokkade: historisch weer (3 dagen vóór vandaag) wordt gebruikt om migratiestromen te corrigeren. Slecht weer in het verleden blokkeert aanvoer.",
+    "history_days": 3,
+    "neerslag_drempel_mm": 5.0,
+    "zicht_drempel_m": 5000,
+    "tegenwind_richtingen": ["N", "NNO", "NNW", "NW", "W", "WNW", "WZW"],
+    "tegenwind_bf_min": 4,
+    "max_penalty": 0.40,
+    "gewicht_dag_min1": 0.50,
+    "gewicht_dag_min2": 0.30,
+    "gewicht_dag_min3": 0.20
   }
 }

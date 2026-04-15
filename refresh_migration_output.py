@@ -63,7 +63,10 @@ LON_MAX     = 15.3
 
 MAX_WORKERS   = 20     # parallel HTTP workers
 FORECAST_DAYS = 8     # today + 7 days ahead
-FORECAST_HOURS = FORECAST_DAYS * 24   # = 192 hourly values
+HISTORY_DAYS  = 3     # days before today to fetch for weather-blockade analysis
+TOTAL_DAYS    = HISTORY_DAYS + FORECAST_DAYS   # = 11 (3 historical + 8 forecast)
+FORECAST_HOURS = FORECAST_DAYS * 24   # = 192 hourly values (forecast only)
+TOTAL_HOURS   = TOTAL_DAYS * 24       # = 264 hourly values (history + forecast)
 
 # Flight altitude thresholds (km/h)
 VLIEGHOOGTE_GESTOPT_THRESHOLD = 50   # ≥ 7 Bf: migration suppressed
@@ -182,6 +185,23 @@ SUPPLY_FACTOR_FLOOR     = float(_ac.get("factor_floor", 0.30))
 SUPPLY_FACTOR_RANGE     = float(_ac.get("factor_range", 0.70))
 DEFAULT_CORRIDOR_SCORE  = 0.50  # Fallback when corridor is empty
 
+# ---------------------------------------------------------------------------
+# Weather blockade — overridden by score_weights.json if present
+# ---------------------------------------------------------------------------
+_wb = (_USER_CFG or {}).get("weerblokkade", {})
+BLOCKADE_NEERSLAG_DREMPEL  = float(_wb.get("neerslag_drempel_mm", 5.0))
+BLOCKADE_ZICHT_DREMPEL     = float(_wb.get("zicht_drempel_m", 5000))
+BLOCKADE_TEGENWIND_DIRS    = frozenset(
+    _wb.get("tegenwind_richtingen", ["N", "NNO", "NNW", "NW", "W", "WNW", "WZW"])
+)
+BLOCKADE_TEGENWIND_BF_MIN  = int(_wb.get("tegenwind_bf_min", 4))
+BLOCKADE_MAX_PENALTY       = float(_wb.get("max_penalty", 0.40))
+BLOCKADE_WEIGHTS           = (
+    float(_wb.get("gewicht_dag_min1", 0.50)),
+    float(_wb.get("gewicht_dag_min2", 0.30)),
+    float(_wb.get("gewicht_dag_min3", 0.20)),
+)
+
 _TF = TimezoneFinder()
 
 
@@ -280,7 +300,11 @@ def build_grid_points() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def fetch_forecast_weather(lat: float, lon: float) -> dict | None:
-    """Fetch 6-day hourly forecast for one point from Open-Meteo."""
+    """Fetch hourly forecast + 3-day history for one point from Open-Meteo.
+
+    The returned hourly dict contains TOTAL_HOURS entries (HISTORY_DAYS * 24
+    historical hours followed by FORECAST_DAYS * 24 forecast hours).
+    """
     params = urllib.parse.urlencode(
         {
             "latitude":     lat,
@@ -291,6 +315,7 @@ def fetch_forecast_weather(lat: float, lon: float) -> dict | None:
                 "pressure_msl,cape,boundary_layer_height"
             ),
             "timezone":     "UTC",
+            "past_days":     HISTORY_DAYS,
             "forecast_days": FORECAST_DAYS,
         }
     )
@@ -371,6 +396,58 @@ def wind_direction_bf_score(direction_deg: float, speed_kmh: float) -> float:
     bf = max(1, min(6, _kmh_to_beaufort_class(speed_kmh)))
     direction_scores = WIND_BF_SCORE_MATRIX.get(direction, {})
     return float(direction_scores.get(str(bf), 0.0))
+
+
+def compute_weather_blockade(hourly: dict | None) -> float:
+    """Compute a weather-blockade factor from historical weather data.
+
+    Analyses the first ``HISTORY_DAYS`` days (72 hours) of the hourly arrays
+    for adverse conditions that would have blocked bird migration (heavy
+    precipitation, head-wind, poor visibility).
+
+    Returns a factor in [1 − BLOCKADE_MAX_PENALTY, 1.0] that should be
+    multiplied with the forecast migration scores.  1.0 = no blockade,
+    lower = stronger blockade in the recent past.
+    """
+    if not hourly or HISTORY_DAYS <= 0:
+        return 1.0
+
+    day_blockade_scores: list[float] = []
+    for day_idx in range(HISTORY_DAYS):
+        penalties: list[float] = []
+        for hour in range(24):
+            h_idx = day_idx * 24 + hour
+            try:
+                precip    = float((hourly.get("precipitation") or [])[h_idx] or 0)
+                visibility = float((hourly.get("visibility") or [])[h_idx] or 10000)
+                wind_dir  = float((hourly.get("wind_direction_10m") or [])[h_idx] or 180)
+                wind_spd  = float((hourly.get("wind_speed_10m") or [])[h_idx] or 0)
+            except (IndexError, TypeError):
+                continue
+
+            p = 0.0
+            if precip >= BLOCKADE_NEERSLAG_DREMPEL:
+                p = max(p, min(1.0, precip / (BLOCKADE_NEERSLAG_DREMPEL * 3)))
+            if visibility < BLOCKADE_ZICHT_DREMPEL:
+                p = max(p, 1.0 - visibility / BLOCKADE_ZICHT_DREMPEL)
+            dir_label = wind_direction_label(wind_dir)
+            bf = _kmh_to_beaufort_class(wind_spd)
+            if dir_label in BLOCKADE_TEGENWIND_DIRS and bf >= BLOCKADE_TEGENWIND_BF_MIN:
+                p = max(p, min(1.0, bf / 6))
+            penalties.append(p)
+
+        day_blockade_scores.append(
+            sum(penalties) / len(penalties) if penalties else 0.0
+        )
+
+    # Weight by recency: day_min1 (yesterday) has highest weight
+    weighted = 0.0
+    for i, bs in enumerate(reversed(day_blockade_scores)):
+        if i < len(BLOCKADE_WEIGHTS):
+            weighted += BLOCKADE_WEIGHTS[i] * bs
+    weighted = min(1.0, weighted)
+
+    return round(1.0 - BLOCKADE_MAX_PENALTY * weighted, 3)
 
 
 def compute_migration_score(
@@ -506,7 +583,12 @@ def apply_supply_chain_correction(results: list[dict]) -> list[dict]:
 
 
 def process_point(point: dict) -> dict:
-    """Fetch forecast and compute per-day scores for one grid point."""
+    """Fetch forecast + history and compute per-day scores for one grid point.
+
+    Historical weather (HISTORY_DAYS before today) is fetched but NOT included
+    in the output.  It is used solely to compute a weather-blockade factor that
+    adjusts the forecast scores for today and later days.
+    """
     lat = point["latitude"]
     lon = point["longitude"]
     hourly = fetch_forecast_weather(lat, lon)
@@ -514,15 +596,23 @@ def process_point(point: dict) -> dict:
         BENE_LAT_MIN <= lat <= BENE_LAT_MAX
         and BENE_LON_MIN <= lon <= BENE_LON_MAX
     )
+
+    # Compute weather-blockade factor from the historical portion of the data
+    blockade_factor = compute_weather_blockade(hourly)
+
+    # Offset: the first HISTORY_DAYS * 24 entries in the hourly arrays are
+    # historical data.  Forecast data starts at index history_offset.
+    history_offset = HISTORY_DAYS * 24
+
     days = []
     for day_idx in range(FORECAST_DAYS):
-        cape_list = (hourly.get("cape") or [CAPE_DEFAULT] * FORECAST_HOURS) if hourly else [CAPE_DEFAULT] * FORECAST_HOURS
-        blh_list  = (hourly.get("boundary_layer_height") or [BLH_DEFAULT] * FORECAST_HOURS) if hourly else [BLH_DEFAULT] * FORECAST_HOURS
+        cape_list = (hourly.get("cape") or [CAPE_DEFAULT] * TOTAL_HOURS) if hourly else [CAPE_DEFAULT] * TOTAL_HOURS
+        blh_list  = (hourly.get("boundary_layer_height") or [BLH_DEFAULT] * TOTAL_HOURS) if hourly else [BLH_DEFAULT] * TOTAL_HOURS
 
         # Compute hourly scores for all 24 hours; use the daily average (not just midday)
         hourly_scores: list[float] = []
         for hour in range(24):
-            hour_idx = day_idx * 24 + hour
+            hour_idx = history_offset + day_idx * 24 + hour
             if hourly:
                 try:
                     hour_weather = {
@@ -543,12 +633,13 @@ def process_point(point: dict) -> dict:
             else:
                 hourly_scores.append(0.5)
 
-        # Daily score = average over all 24 hours (previously: midday snapshot only)
-        score = round(sum(hourly_scores) / len(hourly_scores), 3) if hourly_scores else 0.5
+        # Daily score = average over all 24 hours, then apply blockade factor
+        raw_score = round(sum(hourly_scores) / len(hourly_scores), 3) if hourly_scores else 0.5
+        score = round(clamp(raw_score * blockade_factor, 0.0, 1.0), 3)
         confidence = round(0.50 + 0.40 * math.sqrt(score), 3)
 
         # Keep midday weather snapshot for display / reference purposes
-        midday_idx = day_idx * 24 + 12
+        midday_idx = history_offset + day_idx * 24 + 12
         if hourly:
             try:
                 weather = {
@@ -569,13 +660,14 @@ def process_point(point: dict) -> dict:
 
         wind_spd = float(weather.get("wind_speed_10m", 0)) if weather else 0.0
         days.append({
-            "day_offset":   day_idx,
-            "score":        score,
-            "confidence":   confidence,
-            "class":        score_to_class(score),
-            "vlieghoogte":  flight_altitude(wind_spd),
-            "be_nl_zone":   in_bene,
-            "weather":      weather,
+            "day_offset":       day_idx,
+            "score":            score,
+            "confidence":       confidence,
+            "class":            score_to_class(score),
+            "vlieghoogte":      flight_altitude(wind_spd),
+            "be_nl_zone":       in_bene,
+            "weather":          weather,
+            "blockade_factor":  blockade_factor,
         })
     return {
         "latitude":     lat,
@@ -615,7 +707,7 @@ def build_payload() -> dict:
     return {
         "updated_at":    datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "ttl_minutes":   60,
-        "source":        "bmwt-github-actions-v4-tarifa-raster-8day-no-supply-chain-24h-avg",
+        "source":        "bmwt-github-actions-v5-tarifa-raster-8day-blockade-24h-avg",
         "raster": {
             "anchor_lat":    ANCHOR_LAT,
             "anchor_lon":    ANCHOR_LON,
