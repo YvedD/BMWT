@@ -42,24 +42,7 @@ hide_streamlit_style = """
         footer {visibility: hidden;}    /* Verberg de footer onderaan */
         header {visibility: hidden;}    /* Optioneel: verberg de header */
 
-        /* Uurkeuze-radio: compacte 2-kolomsweergave */
-        [data-testid="stRadioGroup"] {
-            display: grid !important;
-            grid-template-columns: 1fr 1fr !important;
-            column-gap: 4px !important;
-            row-gap: 0px !important;
-        }
-        [data-testid="stRadioGroup"] label {
-            font-size: 11px !important;
-            padding: 1px 2px !important;
-            line-height: 1.3 !important;
-            min-height: unset !important;
-        }
-        [data-testid="stRadioGroup"] label [data-testid="stMarkdownContainer"] p {
-            font-size: 11px !important;
-            line-height: 1.3 !important;
-            margin: 0 !important;
-        }
+        /* Compact uur-selectie spinner */
     </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
@@ -1821,14 +1804,16 @@ with tabs[2]:
         # Initialiseer sessie-state voor uur-selectie als nog niet aanwezig
         sr_uur_dag, ss_uur_dag = daglicht_per_dag[dag_idx]
         _daglicht_bereik = list(range(sr_uur_dag, ss_uur_dag + 1))
-        if f"uur_radio_{dag_idx}" not in st.session_state:
-            st.session_state[f"uur_radio_{dag_idx}"] = "📊 Dag"
-        _uur_keuze_val = st.session_state[f"uur_radio_{dag_idx}"]
+        _slider_key = f"uur_slider_{dag_idx}"
+        _slider_opties = ["📊 Dag"] + [f"{h:02d}:00" for h in _daglicht_bereik]
+        if _slider_key not in st.session_state:
+            st.session_state[_slider_key] = "📊 Dag"
+        _uur_keuze_val = st.session_state[_slider_key]
         # Reset naar "Dag" als het eerder gekozen uur buiten de daglichturen valt
         if _uur_keuze_val != "📊 Dag":
             _gekozen_h = int(_uur_keuze_val.split(":")[0])
             if _gekozen_h not in _daglicht_bereik:
-                st.session_state[f"uur_radio_{dag_idx}"] = "📊 Dag"
+                st.session_state[_slider_key] = "📊 Dag"
                 _uur_keuze_val = "📊 Dag"
         selected_uur = None if _uur_keuze_val == "📊 Dag" else int(_uur_keuze_val.split(":")[0])
 
@@ -2015,7 +2000,6 @@ with tabs[2]:
         with col_uren:
             sr_uur, ss_uur = daglicht_per_dag[dag_idx]
             _daglicht_uren = list(range(sr_uur, ss_uur + 1))
-            _uur_opties = ["📊 Dag"] + [f"{h:02d}:00" for h in _daglicht_uren]
 
             # --- Klok-SVG: visueel horloge met daglichturen ---
             _r = 70           # straal van de klok
@@ -2065,11 +2049,11 @@ with tabs[2]:
             svg_parts.append('</svg>')
             st.markdown("".join(svg_parts), unsafe_allow_html=True)
 
-            # Compacte selectbox voor uurselectie (enkel daglichturen)
-            st.radio(
+            # Interactieve uur-spinner onder de klok (vervangt de radio-knoppen)
+            st.select_slider(
                 "Uur (UTC):",
-                _uur_opties,
-                key=f"uur_radio_{dag_idx}",
+                options=_slider_opties,
+                key=_slider_key,
                 label_visibility="collapsed",
             )
 
