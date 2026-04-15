@@ -123,6 +123,31 @@ _sg = (_USER_CFG or {}).get("score_gewichten", {})
 SCORE_WEIGHT_WIND_DIRECTION = float(_sg.get("windrichting", 0.70))
 SCORE_WEIGHT_TEMPERATURE    = float(_sg.get("temperatuur", 0.30))
 
+# Wind direction × Beaufort score matrix — overridden by score_weights.json
+_DEFAULT_WB_MATRIX = {
+    "N":   {"1": 0.00, "2": 0.00, "3": 0.00, "4": 0.00, "5": 0.00, "6": 0.00},
+    "NNO": {"1": 0.01, "2": 0.02, "3": 0.04, "4": 0.03, "5": 0.02, "6": 0.01},
+    "NO":  {"1": 0.04, "2": 0.09, "3": 0.15, "4": 0.13, "5": 0.10, "6": 0.05},
+    "ONO": {"1": 0.09, "2": 0.19, "3": 0.31, "4": 0.28, "5": 0.20, "6": 0.11},
+    "O":   {"1": 0.15, "2": 0.30, "3": 0.50, "4": 0.45, "5": 0.32, "6": 0.17},
+    "OZO": {"1": 0.21, "2": 0.41, "3": 0.69, "4": 0.62, "5": 0.45, "6": 0.24},
+    "ZO":  {"1": 0.26, "2": 0.51, "3": 0.85, "4": 0.77, "5": 0.55, "6": 0.30},
+    "ZZO": {"1": 0.29, "2": 0.58, "3": 0.96, "4": 0.87, "5": 0.63, "6": 0.34},
+    "Z":   {"1": 0.30, "2": 0.60, "3": 1.00, "4": 0.90, "5": 0.65, "6": 0.35},
+    "ZZW": {"1": 0.21, "2": 0.42, "3": 0.69, "4": 0.62, "5": 0.45, "6": 0.24},
+    "ZW":  {"1": 0.11, "2": 0.22, "3": 0.36, "4": 0.32, "5": 0.23, "6": 0.13},
+    "WZW": {"1": 0.01, "2": 0.03, "3": 0.04, "4": 0.04, "5": 0.03, "6": 0.02},
+    "W":   {"1": 0.00, "2": 0.00, "3": 0.00, "4": 0.00, "5": 0.00, "6": 0.00},
+    "WNW": {"1": 0.00, "2": 0.00, "3": 0.00, "4": 0.00, "5": 0.00, "6": 0.00},
+    "NW":  {"1": 0.00, "2": 0.00, "3": 0.00, "4": 0.00, "5": 0.00, "6": 0.00},
+    "NNW": {"1": 0.00, "2": 0.00, "3": 0.00, "4": 0.00, "5": 0.00, "6": 0.00},
+}
+WIND_BF_SCORE_MATRIX = (_USER_CFG or {}).get("windrichting_beaufort_scores", _DEFAULT_WB_MATRIX)
+
+# Beaufort thresholds for km/h conversion
+# Index i → Bf class i: 0 ≤ 1 km/h (Bf 0), 1 ≤ 6 (Bf 1), 2 ≤ 12 (Bf 2), etc.
+_BEAUFORT_THRESHOLDS_KMH = [1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118]
+
 # Temperature score control points (°C, score 0.0–1.0)
 # Overridden by score_weights.json if present
 _raw_temp_pts = (_USER_CFG or {}).get("temperatuur_score_punten", None)
@@ -318,6 +343,36 @@ def temperature_score(temp_c: float) -> float:
     return interpolate_piecewise_score(temp_c, TEMPERATURE_SCORE_POINTS)
 
 
+def _kmh_to_beaufort_class(kmh: float) -> int:
+    """Convert wind speed in km/h to Beaufort class (0–12)."""
+    for i, threshold in enumerate(_BEAUFORT_THRESHOLDS_KMH):
+        if kmh <= threshold:
+            return i
+    return 12
+
+
+def wind_direction_bf_score(direction_deg: float, speed_kmh: float) -> float:
+    """Look up wind direction × Beaufort score from the user-configurable matrix.
+
+    Parameters
+    ----------
+    direction_deg : float
+        Wind direction in degrees (0–360).
+    speed_kmh : float
+        Wind speed in km/h.
+
+    Returns
+    -------
+    float
+        Score 0.0–1.0 from the matrix.
+    """
+    direction = wind_direction_label(direction_deg)
+    # Bf 0 (calm, < 1 km/h) is treated as Bf 1 — minimal migration activity
+    bf = max(1, min(6, _kmh_to_beaufort_class(speed_kmh)))
+    direction_scores = WIND_BF_SCORE_MATRIX.get(direction, {})
+    return float(direction_scores.get(str(bf), 0.0))
+
+
 def compute_migration_score(
     weather: dict | None,
     lat: float = 0.0,
@@ -326,12 +381,10 @@ def compute_migration_score(
     """
     Return (score, confidence) where score ∈ [0, 1].
 
-    Weights:
-      70 % wind direction     (regionally corrected — see below)
-      30 % temperature        (manually adjustable via TEMPERATURE_SCORE_POINTS)
-
-    Region-specific BE/NL corrections have been disabled: all points use the
-    general logic to produce a uniform treatment of the raster area.
+    Wind direction score is looked up from the user-configurable
+    windrichting × Beaufort matrix (16 directions × 6 Bf classes).
+    Temperature score is computed via piecewise linear interpolation.
+    Both are combined using the configured weights.
     """
     if not weather:
         return 0.5, 0.3
@@ -340,15 +393,7 @@ def compute_migration_score(
     wind_dir   = float(weather.get("wind_direction_10m", 180))
     temp       = float(weather.get("temperature_2m", 12))
 
-    # Use general scoring (no BE/NL special casing)
-    south_score = (1.0 - math.cos(math.radians(wind_dir))) / 2.0
-    west_component = max(0.0, -math.sin(math.radians(wind_dir)))
-    is_nw_w_strong = (WIND_NW_W_DIR_MIN <= wind_dir <= WIND_NW_W_DIR_MAX) and (wind_speed >= BENE_WIND_SPEED_7BF)
-    if is_nw_w_strong:
-        wind_dir_score = clamp(south_score + west_component * WIND_SEA_BONUS, 0.0, 1.0)
-    else:
-        wind_dir_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
-
+    wind_dir_score = wind_direction_bf_score(wind_dir, wind_speed)
     temp_score = temperature_score(temp)
 
     score = clamp(
