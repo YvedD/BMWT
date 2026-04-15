@@ -406,6 +406,8 @@ def _windrichting_bf_score(wind_richting_graden: float, wind_snelheid_kmh: float
         return max(0.0, south_score - 0.70 * west_component)
 
     richting = graden_naar_windrichting(wind_richting_graden)
+    # Bf 0 (windstil, < 1 km/h) wordt als Bf 1 behandeld — bij windstilte
+    # is trekactiviteit minimaal, dezelfde score als bij zeer lichte wind.
     bf = max(1, min(6, _kmh_naar_beaufort_klasse(wind_snelheid_kmh)))
     richting_scores = matrix.get(richting, {})
     return float(richting_scores.get(str(bf), 0.0))
@@ -2018,7 +2020,8 @@ with tabs[2]:
             )
             # Windrichting×Beaufort component score voor popup
             _wb_matrix = _cfg().get("windrichting_beaufort_scores", {})
-            _disp_bf_int = int(disp_wind_kracht.replace("Bf", "")) if disp_wind_kracht.replace("Bf", "").isdigit() else 0
+            _disp_bf_str = disp_wind_kracht.replace("Bf", "")
+            _disp_bf_int = int(_disp_bf_str) if _disp_bf_str.isdigit() else 0
             _disp_bf_clamped = max(1, min(6, _disp_bf_int))
             _wb_component = float(_wb_matrix.get(disp_wind_richting, {}).get(str(_disp_bf_clamped), 0.0))
             _wb_pct = int(_wb_component * 100)
@@ -2674,11 +2677,14 @@ en zijn meteen actief bij het heropstarten van de applicatie.
                 suggestie_data[key].append(obs["kwaliteit_score"])
 
             if suggestie_data:
+                def _sorteer_richting_bf(item):
+                    """Sorteer op windrichting (kompasorde) en dan Beaufort."""
+                    (richting, bf_val), _ = item
+                    r_idx = _ALLE_RICHTINGEN.index(richting) if richting in _ALLE_RICHTINGEN else 0
+                    return (r_idx, bf_val)
+
                 sug_rows = []
-                for (richting, bf), scores in sorted(suggestie_data.items(),
-                                                      key=lambda x: (_ALLE_RICHTINGEN.index(x[0][0])
-                                                                     if x[0][0] in _ALLE_RICHTINGEN else 0,
-                                                                     x[0][1])):
+                for (richting, bf), scores in sorted(suggestie_data.items(), key=_sorteer_richting_bf):
                     gem = sum(scores) / len(scores)
                     huidige = float(wb_scores.get(richting, {}).get(str(bf), 0.0))
                     verschil = round(gem - huidige, 2)

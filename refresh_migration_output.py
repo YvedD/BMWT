@@ -145,6 +145,7 @@ _DEFAULT_WB_MATRIX = {
 WIND_BF_SCORE_MATRIX = (_USER_CFG or {}).get("windrichting_beaufort_scores", _DEFAULT_WB_MATRIX)
 
 # Beaufort thresholds for km/h conversion
+# Index i → Bf class i: 0 ≤ 1 km/h (Bf 0), 1 ≤ 6 (Bf 1), 2 ≤ 12 (Bf 2), etc.
 _BEAUFORT_THRESHOLDS_KMH = [1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118]
 
 # Temperature score control points (°C, score 0.0–1.0)
@@ -366,6 +367,7 @@ def wind_direction_bf_score(direction_deg: float, speed_kmh: float) -> float:
         Score 0.0–1.0 from the matrix.
     """
     direction = wind_direction_label(direction_deg)
+    # Bf 0 (calm, < 1 km/h) is treated as Bf 1 — minimal migration activity
     bf = max(1, min(6, _kmh_to_beaufort_class(speed_kmh)))
     direction_scores = WIND_BF_SCORE_MATRIX.get(direction, {})
     return float(direction_scores.get(str(bf), 0.0))
