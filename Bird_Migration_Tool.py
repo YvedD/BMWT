@@ -1,6 +1,7 @@
 import streamlit as st
 from geopy.geocoders import Nominatim, OpenCage
 import folium
+import json
 import requests
 from streamlit_folium import st_folium
 import pandas as pd
@@ -10,10 +11,12 @@ import pytz
 from io import BytesIO
 import time
 import math
+import os
 import concurrent.futures
 import threading
 from geopy.exc import GeocoderUnavailable, GeocoderRateLimited
 import streamlit.components.v1 as components
+from pathlib import Path
 from timezonefinder import TimezoneFinder
 from soorten_geluiden import iframe_data
 import altair as alt
@@ -21,6 +24,91 @@ from astral import LocationInfo
 from astral.sun import sun
 
 _TF = TimezoneFinder()
+
+# ---------------------------------------------------------------------------
+# Persistent scoring configuratie — laden / opslaan via JSON
+# ---------------------------------------------------------------------------
+_SCORE_WEIGHTS_PATH = Path("data/migration/score_weights.json")
+
+# Standaardwaarden (worden gebruikt als het JSON-bestand ontbreekt)
+_STANDAARD_SCORE_GEWICHTEN: dict = {
+    "score_gewichten": {
+        "windrichting": 0.70,
+        "temperatuur": 0.30,
+    },
+    "temperatuur_score_punten": [
+        [-5.0, 0.00],
+        [ 2.0, 0.05],
+        [ 5.0, 0.10],
+        [ 8.0, 0.15],
+        [10.0, 0.20],
+        [12.0, 0.35],
+        [18.0, 0.50],
+        [20.0, 0.60],
+        [25.0, 0.70],
+        [27.0, 0.95],
+        [35.0, 0.00],
+    ],
+    "wind_correctie": {
+        "west_penalty": 0.70,
+        "zee_bonus": 0.40,
+        "nw_w_richting_min": 225.0,
+        "nw_w_richting_max": 330.0,
+    },
+    "wind_snelheid_bf": {
+        "bf1": 1.0,
+        "bf3_min": 12.0,
+        "bf3_max": 20.0,
+        "bf5_max": 38.0,
+        "bf7_min": 50.0,
+    },
+    "voorjaar_wind_nul_alle_snelheden": ["W", "NW", "WNW", "NNW", "WZW"],
+    "voorjaar_wind_nul_strikt_boven_3bf": ["ZW", "N", "NNO"],
+    "voorjaar_wind_max_strikt_onder_3bf": ["ZW", "ZZW"],
+    "aanvoer_corridor": {
+        "france_weight": 0.80,
+        "spain_weight": 0.20,
+        "factor_floor": 0.30,
+        "factor_range": 0.70,
+        "lag_france": 1,
+        "lag_spain": 2,
+    },
+}
+
+
+def _laad_score_gewichten() -> dict:
+    """Laad scoring-parameters uit JSON; val terug op standaardwaarden."""
+    try:
+        if _SCORE_WEIGHTS_PATH.exists():
+            with open(_SCORE_WEIGHTS_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # Merge met standaardwaarden zodat ontbrekende velden aangevuld worden
+            merged = json.loads(json.dumps(_STANDAARD_SCORE_GEWICHTEN))
+            for key in merged:
+                if key in data:
+                    if isinstance(merged[key], dict) and isinstance(data[key], dict):
+                        merged[key].update(data[key])
+                    else:
+                        merged[key] = data[key]
+            return merged
+    except Exception:
+        pass
+    return json.loads(json.dumps(_STANDAARD_SCORE_GEWICHTEN))
+
+
+def _sla_score_gewichten_op(cfg: dict) -> None:
+    """Sla scoring-parameters op naar JSON (persistent)."""
+    _SCORE_WEIGHTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    cfg_out = {"_info": "Handmatig aanpasbare parameters voor de migratie-score berekening. Wijzig waarden via het tabblad Algoritme's in de app, of bewerk dit bestand rechtstreeks."}
+    cfg_out.update(cfg)
+    with open(_SCORE_WEIGHTS_PATH, "w", encoding="utf-8") as f:
+        json.dump(cfg_out, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+# Laad configuratie bij het opstarten en bewaar in session_state
+if "score_cfg" not in st.session_state:
+    st.session_state.score_cfg = _laad_score_gewichten()
 
 # --- Thread-veilige cache voor dichtsbijzijnde bewoonde kern (Nominatim fallback) ---
 _kern_cache: dict = {}
@@ -261,8 +349,12 @@ BENE_WIND_OPT_DIR   = 135.0   # ideale windrichting ZO (graden)
 BENE_WIND_FALLOFF_S = 225.0   # graden: score daalt naar 0 bij W (315°, 180° + 135° = W)
 BENE_WIND_FALLOFF_E = 135.0   # graden: score daalt naar 0 bij N (0°, 135° terug van ZO)
 
-# Windkrachtbereiken voor BE/NL (Beaufort → km/h)
-BENE_WIND_SPEED_1BF =  1.0    # Bf 1 ondergrens
+# Windkrachtbereiken voor BE/NL (Beaufort → km/h) — geladen uit configuratie
+def _cfg():
+    """Haal de actieve scoring-configuratie op uit session_state."""
+    return st.session_state.get("score_cfg", _STANDAARD_SCORE_GEWICHTEN)
+
+BENE_WIND_SPEED_1BF =  1.0    # Bf 1 ondergrens (standaard, overschreven door cfg)
 BENE_WIND_SPEED_3BF = 12.0    # Bf 3 ondergrens (= optimum ondergrens)
 BENE_WIND_SPEED_3BF_MAX = 20.0  # Bf 3 bovengrens
 BENE_WIND_SPEED_5BF = 38.0    # Bf 5 bovengrens (= optimum bovengrens)
@@ -654,34 +746,34 @@ def migratie_bereken_score(weer, lat: float = 0.0, lon: float = 0.0):
     """
     Bereken migratiescore (0.0 = extreem ongunstig, 1.0 = extreem gunstig).
 
-    Gewichten:
-      - Windrichting  70 %  (manueel aanpasbaar via constante)
-      - Temperatuur   30 %  (manueel aanpasbaar via temperatuur-puntenreeks)
-
-    Uitzondering windrichting: sterke NW/W wind (>6 Bf) levert geweldige zeemigratie
-    op; in dat geval vervalt de West-straf en geldt een zeemigratiebonus.
+    Gewichten en parameters worden gelezen uit de persistente configuratie
+    (st.session_state.score_cfg / data/migration/score_weights.json).
     """
     if not weer:
         return 0.5
 
+    cfg = _cfg()
     wind_kracht   = float(weer.get("wind_speed_10m", 0))
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
 
-    # Gebruik universele (niet-regionale) scoring — behandel alle punten gelijk
+    wc = cfg["wind_correctie"]
+    ws = cfg["wind_snelheid_bf"]
+    sg = cfg["score_gewichten"]
+
     south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
     west_component = max(0.0, -math.sin(math.radians(wind_richting)))
-    is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
+    is_nw_w_sterk = (wc["nw_w_richting_min"] <= wind_richting <= wc["nw_w_richting_max"]) and (wind_kracht >= ws["bf7_min"])
     if is_nw_w_sterk:
-        wind_richting_score = min(1.0, south_score + west_component * WIND_SEA_BONUS)
+        wind_richting_score = min(1.0, south_score + west_component * wc["zee_bonus"])
     else:
-        wind_richting_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
+        wind_richting_score = max(0.0, south_score - wc["west_penalty"] * west_component)
 
     temp_score = _temperatuur_score(temperatuur)
 
     score = (
-        MIGRATIE_SCORE_WINDRICHTING_GEWICHT * wind_richting_score
-        + MIGRATIE_SCORE_TEMPERATUUR_GEWICHT * temp_score
+        sg["windrichting"] * wind_richting_score
+        + sg["temperatuur"] * temp_score
     )
     return round(min(1.0, max(0.0, score)), 3)
 
@@ -969,12 +1061,17 @@ def _haal_weer_forecast_rasterpunt(punt: dict) -> dict | None:
 
 
 def _voorjaar_bene_wind_override(wind_richting: float, wind_kracht: float) -> str | None:
+    cfg = _cfg()
+    ws = cfg["wind_snelheid_bf"]
+    nul_alle = frozenset(cfg.get("voorjaar_wind_nul_alle_snelheden", VOORJAAR_WIND_NUL_ALLE_SNELHEDEN))
+    nul_strikt = frozenset(cfg.get("voorjaar_wind_nul_strikt_boven_3bf", VOORJAAR_WIND_NUL_STRIKT_BOVEN_3BF))
+    max_strikt = frozenset(cfg.get("voorjaar_wind_max_strikt_onder_3bf", VOORJAAR_WIND_MAX_STRIKT_ONDER_3BF))
     richting = graden_naar_windrichting(wind_richting)
-    if richting in VOORJAAR_WIND_NUL_ALLE_SNELHEDEN:
+    if richting in nul_alle:
         return "zero"
-    if richting in VOORJAAR_WIND_NUL_STRIKT_BOVEN_3BF and wind_kracht > BENE_WIND_SPEED_3BF_MAX:
+    if richting in nul_strikt and wind_kracht > ws["bf3_max"]:
         return "zero"
-    if richting in VOORJAAR_WIND_MAX_STRIKT_ONDER_3BF and wind_kracht < BENE_WIND_SPEED_3BF:
+    if richting in max_strikt and wind_kracht < ws["bf3_min"]:
         return "max"
     return None
 
@@ -994,7 +1091,9 @@ def _interpoleer_score_puntsgewijs(waarde: float, punten) -> float:
 
 
 def _temperatuur_score(temperatuur: float) -> float:
-    return _interpoleer_score_puntsgewijs(temperatuur, TEMPERATUUR_SCORE_PUNTEN)
+    cfg = _cfg()
+    punten = tuple(tuple(p) for p in cfg.get("temperatuur_score_punten", TEMPERATUUR_SCORE_PUNTEN))
+    return _interpoleer_score_puntsgewijs(temperatuur, punten)
 
 
 def migratie_bereken_score_uitgebreid(
@@ -1005,35 +1104,34 @@ def migratie_bereken_score_uitgebreid(
     """
     Bereken migratiescore (0.0–1.0) op basis van windrichting en temperatuur.
 
-    Gewichten:
-      70 % windrichting   (regionaal gecorrigeerd — zie hieronder)
-      30 % temperatuur    (via manueel aanpasbare temperatuur-puntenreeks)
-
-    Regionale correcties zijn uitgeschakeld: alle punten gebruiken nu de
-    algemene (niet-BE/NL) logica, zodat het rastergebied boven BE/NL/FR/DE
-    op dezelfde manier verwerkt wordt als de rest van Europa.
+    Gewichten en parameters worden gelezen uit de persistente configuratie
+    (st.session_state.score_cfg / data/migration/score_weights.json).
     """
     if not weer:
         return 0.5
 
+    cfg = _cfg()
     wind_kracht   = float(weer.get("wind_speed_10m", 0))
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
 
-    # Universele scoring (geen BE/NL-aanpassing)
+    wc = cfg["wind_correctie"]
+    ws = cfg["wind_snelheid_bf"]
+    sg = cfg["score_gewichten"]
+
     south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
     west_component = max(0.0, -math.sin(math.radians(wind_richting)))
-    is_nw_w_sterk = (WIND_NW_W_DIR_MIN <= wind_richting <= WIND_NW_W_DIR_MAX) and (wind_kracht >= BENE_WIND_SPEED_7BF)
+    is_nw_w_sterk = (wc["nw_w_richting_min"] <= wind_richting <= wc["nw_w_richting_max"]) and (wind_kracht >= ws["bf7_min"])
     if is_nw_w_sterk:
-        wind_richting_score = min(1.0, south_score + west_component * WIND_SEA_BONUS)
+        wind_richting_score = min(1.0, south_score + west_component * wc["zee_bonus"])
     else:
-        wind_richting_score = max(0.0, south_score - WIND_WEST_PENALTY * west_component)
+        wind_richting_score = max(0.0, south_score - wc["west_penalty"] * west_component)
 
     temp_score = _temperatuur_score(temperatuur)
 
     score = (
-        MIGRATIE_SCORE_WINDRICHTING_GEWICHT * wind_richting_score
-        + MIGRATIE_SCORE_TEMPERATUUR_GEWICHT * temp_score
+        sg["windrichting"] * wind_richting_score
+        + sg["temperatuur"] * temp_score
     )
     return round(min(1.0, max(0.0, score)), 3)
 
@@ -1087,13 +1185,15 @@ def _pas_aanvoer_toe(days_data: list[list[dict]]) -> list[list[dict]]:
         spanje_gem.append(sum(sp_scores) / len(sp_scores) if sp_scores else STANDAARD_CORRIDOR_SCORE)
 
     for dag_idx in range(n_days):
-        fr_dag     = max(0, dag_idx - SUPPLY_LAG_FRANCE)
-        sp_dag     = max(0, dag_idx - SUPPLY_LAG_SPAIN)
+        cfg = _cfg()
+        ac = cfg["aanvoer_corridor"]
+        fr_dag     = max(0, dag_idx - ac["lag_france"])
+        sp_dag     = max(0, dag_idx - ac["lag_spain"])
         fr_supply  = france_gem[fr_dag]
         sp_supply  = spanje_gem[sp_dag]
         # Gecombineerde aanvoerfactor (Frankrijk: meer directe impact)
-        supply_raw    = SUPPLY_FRANCE_WEIGHT * fr_supply + SUPPLY_SPAIN_WEIGHT * sp_supply
-        supply_factor = round(SUPPLY_FACTOR_FLOOR + SUPPLY_FACTOR_RANGE * supply_raw, 3)  # floor op 30 %
+        supply_raw    = ac["france_weight"] * fr_supply + ac["spain_weight"] * sp_supply
+        supply_factor = round(ac["factor_floor"] + ac["factor_range"] * supply_raw, 3)  # floor op 30 %
 
         for punt in days_data[dag_idx]:
             lat = punt["latitude"]
@@ -1385,7 +1485,7 @@ Gebruik de tabbladen hieronder om de gegevens te verkennen en aan te passen naar
 
 # Hoofdvenster met tabbladen
 #tabs = st.tabs(["Weergegevens", "Voorspellingen", "Vliegbeelden", "Geluiden-zangvogels", "Geluiden-steltlopers", "CROW project", "BIRDTAM project", "Trektellen.nl (read only)", "Crane Radar", "Gebruiksaanwijzing"])
-tabs = st.tabs(["Weergegevens", "Voorspellingen", "🦅 Migratie Raster", "CROW project", "Kraanvogel Radar", "🎧 Vluchtroepen","Gebruiksaanwijzing"])
+tabs = st.tabs(["Weergegevens", "Voorspellingen", "🦅 Migratie Raster", "CROW project", "Kraanvogel Radar", "🎧 Vluchtroepen", "⚙️ Algoritme's", "Gebruiksaanwijzing"])
 
 
 # Tab 0: Weergeven van de gegevens
@@ -2105,7 +2205,264 @@ with tabs[5]:
     components.html(iframe_html, height=2400)
 
 
+# ---------------------------------------------------------------------------
+# Tab 6: Algoritme's — Configureerbare scoring-parameters
+# ---------------------------------------------------------------------------
 with tabs[6]:
+    st.header("⚙️ Algoritme's — Migratie-score Parameters")
+    st.markdown("""
+Pas hier de **gewichten en drempelwaarden** aan die gebruikt worden voor de berekening
+van de migratiescores in het tabblad *Migratie Raster*.
+
+Wijzigingen worden **persistent opgeslagen** in `data/migration/score_weights.json`
+en zijn meteen actief bij het heropstarten van de applicatie.
+    """)
+
+    cfg = st.session_state.score_cfg
+
+    # --- 1. Score-gewichten ---
+    st.subheader("📊 Score-gewichten")
+    st.caption("Bepaal hoeveel invloed windrichting vs. temperatuur heeft op de totaalscore (som moet 1.0 zijn).")
+    col_sg1, col_sg2 = st.columns(2)
+    with col_sg1:
+        sg_wind = st.slider(
+            "Windrichting gewicht",
+            min_value=0.0, max_value=1.0,
+            value=float(cfg["score_gewichten"]["windrichting"]),
+            step=0.05, key="algo_sg_wind",
+            help="Hoger = windrichting heeft meer invloed op de totaalscore",
+        )
+    with col_sg2:
+        sg_temp = round(1.0 - sg_wind, 2)
+        st.metric("Temperatuur gewicht (automatisch)", f"{sg_temp:.2f}")
+
+    st.divider()
+
+    # --- 2. Windcorrectie-factoren ---
+    st.subheader("🌬️ Windcorrectie-factoren")
+    st.caption("Straf- en bonusfactoren voor de windrichting-component.")
+    col_wc1, col_wc2 = st.columns(2)
+    with col_wc1:
+        wc_west_penalty = st.slider(
+            "West-component straf",
+            min_value=0.0, max_value=1.5,
+            value=float(cfg["wind_correctie"]["west_penalty"]),
+            step=0.05, key="algo_wc_west",
+            help="Hoe hoger, hoe meer straf voor wind met een westelijke component",
+        )
+    with col_wc2:
+        wc_zee_bonus = st.slider(
+            "Zeemigratie-bonus (NW/W >6 Bf)",
+            min_value=0.0, max_value=1.0,
+            value=float(cfg["wind_correctie"]["zee_bonus"]),
+            step=0.05, key="algo_wc_zee",
+            help="Bonus bij sterke NW/W wind — vogels worden over de Noordzee geblazen",
+        )
+    col_wc3, col_wc4 = st.columns(2)
+    with col_wc3:
+        wc_dir_min = st.number_input(
+            "NW/W richting minimum (°)",
+            min_value=0.0, max_value=360.0,
+            value=float(cfg["wind_correctie"]["nw_w_richting_min"]),
+            step=5.0, key="algo_wc_dir_min",
+            help="Ondergrens richtingsbereik waarbinnen zeemigratiebonus geldt (standaard: 225° = ZW)",
+        )
+    with col_wc4:
+        wc_dir_max = st.number_input(
+            "NW/W richting maximum (°)",
+            min_value=0.0, max_value=360.0,
+            value=float(cfg["wind_correctie"]["nw_w_richting_max"]),
+            step=5.0, key="algo_wc_dir_max",
+            help="Bovengrens richtingsbereik waarbinnen zeemigratiebonus geldt (standaard: 330° = NNW)",
+        )
+
+    st.divider()
+
+    # --- 3. Wind-snelheid drempels (Beaufort) ---
+    st.subheader("💨 Windsnelheid drempels (km/h)")
+    st.caption("Beaufort-grenzen die bepalen wanneer wind gunstig of remmend is voor trek.")
+    col_bf1, col_bf2, col_bf3, col_bf4, col_bf5 = st.columns(5)
+    with col_bf1:
+        bf1 = st.number_input("Bf 1 min", value=float(cfg["wind_snelheid_bf"]["bf1"]),
+                               step=0.5, key="algo_bf1", help="Ondergrens Beaufort 1")
+    with col_bf2:
+        bf3_min = st.number_input("Bf 3 min", value=float(cfg["wind_snelheid_bf"]["bf3_min"]),
+                                   step=0.5, key="algo_bf3_min", help="Ondergrens Beaufort 3 (optimum start)")
+    with col_bf3:
+        bf3_max = st.number_input("Bf 3 max", value=float(cfg["wind_snelheid_bf"]["bf3_max"]),
+                                   step=0.5, key="algo_bf3_max", help="Bovengrens Beaufort 3")
+    with col_bf4:
+        bf5_max = st.number_input("Bf 5 max", value=float(cfg["wind_snelheid_bf"]["bf5_max"]),
+                                   step=0.5, key="algo_bf5_max", help="Bovengrens Beaufort 5 (optimum einde)")
+    with col_bf5:
+        bf7_min = st.number_input("Bf 7 min", value=float(cfg["wind_snelheid_bf"]["bf7_min"]),
+                                   step=0.5, key="algo_bf7_min", help="Ondergrens Beaufort 7 (trek onderdrukt)")
+
+    st.divider()
+
+    # --- 4. Temperatuur-score curve ---
+    st.subheader("🌡️ Temperatuur-score curve")
+    st.caption(
+        "Elk punt koppelt een temperatuur (°C) aan een score (0.0–1.0). "
+        "Tussenliggende waarden worden lineair geïnterpoleerd. "
+        "Voeg rijen toe of verwijder ze om de curve aan te passen."
+    )
+    temp_punten = [list(p) for p in cfg.get("temperatuur_score_punten", TEMPERATUUR_SCORE_PUNTEN)]
+    temp_df = pd.DataFrame(temp_punten, columns=["Temperatuur (°C)", "Score (0–1)"])
+    edited_temp = st.data_editor(
+        temp_df,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="algo_temp_editor",
+        column_config={
+            "Temperatuur (°C)": st.column_config.NumberColumn(min_value=-30.0, max_value=50.0, step=0.5),
+            "Score (0–1)": st.column_config.NumberColumn(min_value=0.0, max_value=1.0, step=0.01),
+        },
+    )
+
+    st.divider()
+
+    # --- 5. Voorjaarswind-overrides ---
+    st.subheader("🧭 Voorjaarswind overrides")
+    st.caption(
+        "Windrichtingen die in het voorjaar een vaste score krijgen, ongeacht andere omstandigheden."
+    )
+    alle_richtingen = ["N", "NNO", "NO", "ONO", "O", "OZO", "ZO", "ZZO",
+                       "Z", "ZZW", "ZW", "WZW", "W", "WNW", "NW", "NNW"]
+    col_vw1, col_vw2, col_vw3 = st.columns(3)
+    with col_vw1:
+        vw_nul_alle = st.multiselect(
+            "Score = 0 (alle snelheden)",
+            options=alle_richtingen,
+            default=cfg.get("voorjaar_wind_nul_alle_snelheden", list(VOORJAAR_WIND_NUL_ALLE_SNELHEDEN)),
+            key="algo_vw_nul_alle",
+            help="Deze windrichtingen krijgen altijd score 0 — ongeacht windkracht",
+        )
+    with col_vw2:
+        vw_nul_strikt = st.multiselect(
+            "Score = 0 (strikt boven 3 Bf)",
+            options=alle_richtingen,
+            default=cfg.get("voorjaar_wind_nul_strikt_boven_3bf", list(VOORJAAR_WIND_NUL_STRIKT_BOVEN_3BF)),
+            key="algo_vw_nul_strikt",
+            help="Score 0 alléén als windkracht strikt boven Bf 3 max",
+        )
+    with col_vw3:
+        vw_max_strikt = st.multiselect(
+            "Score = max (strikt onder 3 Bf)",
+            options=alle_richtingen,
+            default=cfg.get("voorjaar_wind_max_strikt_onder_3bf", list(VOORJAAR_WIND_MAX_STRIKT_ONDER_3BF)),
+            key="algo_vw_max_strikt",
+            help="Maximale score alléén als windkracht strikt onder Bf 3 min",
+        )
+
+    st.divider()
+
+    # --- 6. Aanvoercorridor (supply chain) ---
+    st.subheader("📦 Aanvoercorridor (supply chain)")
+    st.caption(
+        "Hoe sterk weegt de doortocht door Frankrijk en Spanje mee in de BE/NL-score?"
+    )
+    col_ac1, col_ac2 = st.columns(2)
+    with col_ac1:
+        ac_fr_w = st.slider(
+            "Frankrijk gewicht",
+            min_value=0.0, max_value=1.0,
+            value=float(cfg["aanvoer_corridor"]["france_weight"]),
+            step=0.05, key="algo_ac_fr",
+            help="Hoe zwaar weegt de aanvoer uit Frankrijk mee",
+        )
+    with col_ac2:
+        ac_sp_w = round(1.0 - ac_fr_w, 2)
+        st.metric("Spanje gewicht (automatisch)", f"{ac_sp_w:.2f}")
+    col_ac3, col_ac4, col_ac5 = st.columns(3)
+    with col_ac3:
+        ac_floor = st.slider(
+            "Minimum factor (floor)",
+            min_value=0.0, max_value=1.0,
+            value=float(cfg["aanvoer_corridor"]["factor_floor"]),
+            step=0.05, key="algo_ac_floor",
+            help="Minimale aanvoerfactor — er trekken altijd wel vogels",
+        )
+    with col_ac4:
+        ac_lag_fr = st.number_input(
+            "Vertraging Frankrijk (dagen)",
+            min_value=0, max_value=5,
+            value=int(cfg["aanvoer_corridor"]["lag_france"]),
+            step=1, key="algo_ac_lag_fr",
+            help="Hoeveel dagen eerder kijken we naar Frankrijk?",
+        )
+    with col_ac5:
+        ac_lag_sp = st.number_input(
+            "Vertraging Spanje (dagen)",
+            min_value=0, max_value=7,
+            value=int(cfg["aanvoer_corridor"]["lag_spain"]),
+            step=1, key="algo_ac_lag_sp",
+            help="Hoeveel dagen eerder kijken we naar Spanje?",
+        )
+
+    st.divider()
+
+    # --- Opslaan / Reset ---
+    col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 6])
+
+    with col_btn1:
+        if st.button("💾 Opslaan", key="algo_save", type="primary"):
+            # Bouw nieuwe configuratie op uit de widgets
+            temp_rows = edited_temp.dropna(subset=["Temperatuur (°C)", "Score (0–1)"])
+            temp_rows = temp_rows.sort_values("Temperatuur (°C)")
+            new_temp = [[float(r["Temperatuur (°C)"]), float(r["Score (0–1)"])] for _, r in temp_rows.iterrows()]
+
+            nieuwe_cfg = {
+                "score_gewichten": {
+                    "windrichting": round(sg_wind, 2),
+                    "temperatuur": round(sg_temp, 2),
+                },
+                "temperatuur_score_punten": new_temp,
+                "wind_correctie": {
+                    "west_penalty": round(wc_west_penalty, 2),
+                    "zee_bonus": round(wc_zee_bonus, 2),
+                    "nw_w_richting_min": round(wc_dir_min, 1),
+                    "nw_w_richting_max": round(wc_dir_max, 1),
+                },
+                "wind_snelheid_bf": {
+                    "bf1": round(bf1, 1),
+                    "bf3_min": round(bf3_min, 1),
+                    "bf3_max": round(bf3_max, 1),
+                    "bf5_max": round(bf5_max, 1),
+                    "bf7_min": round(bf7_min, 1),
+                },
+                "voorjaar_wind_nul_alle_snelheden": vw_nul_alle,
+                "voorjaar_wind_nul_strikt_boven_3bf": vw_nul_strikt,
+                "voorjaar_wind_max_strikt_onder_3bf": vw_max_strikt,
+                "aanvoer_corridor": {
+                    "france_weight": round(ac_fr_w, 2),
+                    "spain_weight": round(ac_sp_w, 2),
+                    "factor_floor": round(ac_floor, 2),
+                    "factor_range": round(1.0 - ac_floor, 2),
+                    "lag_france": ac_lag_fr,
+                    "lag_spain": ac_lag_sp,
+                },
+            }
+            st.session_state.score_cfg = nieuwe_cfg
+            _sla_score_gewichten_op(nieuwe_cfg)
+            # Wis de migratie-rastercache zodat de volgende keer met de nieuwe waarden gerekend wordt
+            laad_migratie_rasterdata_6daags.clear()
+            st.success("✅ Parameters opgeslagen! Migratie-rastercache gewist — de volgende keer worden de nieuwe waarden gebruikt.")
+
+    with col_btn2:
+        if st.button("🔄 Herstel standaardwaarden", key="algo_reset"):
+            st.session_state.score_cfg = json.loads(json.dumps(_STANDAARD_SCORE_GEWICHTEN))
+            _sla_score_gewichten_op(st.session_state.score_cfg)
+            laad_migratie_rasterdata_6daags.clear()
+            st.info("🔄 Standaardwaarden hersteld. Herlaad de pagina om de wijzigingen te zien.")
+            st.rerun()
+
+    # Toon huidige configuratie als JSON (read-only)
+    with st.expander("📄 Huidige configuratie (JSON)"):
+        st.json(cfg)
+
+
+with tabs[7]:
     st.header("Handleiding")
     # Eenvoudige handleiding
     st.text("""

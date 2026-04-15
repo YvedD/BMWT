@@ -1,0 +1,44 @@
+{
+  "_info": "Handmatig aanpasbare parameters voor de migratie-score berekening. Wijzig waarden via het tabblad 'Algoritme's' in de app, of bewerk dit bestand rechtstreeks.",
+  "score_gewichten": {
+    "windrichting": 0.70,
+    "temperatuur": 0.30
+  },
+  "temperatuur_score_punten": [
+    [-5.0, 0.00],
+    [2.0, 0.05],
+    [5.0, 0.10],
+    [8.0, 0.15],
+    [10.0, 0.20],
+    [12.0, 0.35],
+    [18.0, 0.50],
+    [20.0, 0.60],
+    [25.0, 0.70],
+    [27.0, 0.95],
+    [35.0, 0.00]
+  ],
+  "wind_correctie": {
+    "west_penalty": 0.70,
+    "zee_bonus": 0.40,
+    "nw_w_richting_min": 225.0,
+    "nw_w_richting_max": 330.0
+  },
+  "wind_snelheid_bf": {
+    "bf1": 1.0,
+    "bf3_min": 12.0,
+    "bf3_max": 20.0,
+    "bf5_max": 38.0,
+    "bf7_min": 50.0
+  },
+  "voorjaar_wind_nul_alle_snelheden": ["W", "NW", "WNW", "NNW", "WZW"],
+  "voorjaar_wind_nul_strikt_boven_3bf": ["ZW", "N", "NNO"],
+  "voorjaar_wind_max_strikt_onder_3bf": ["ZW", "ZZW"],
+  "aanvoer_corridor": {
+    "france_weight": 0.80,
+    "spain_weight": 0.20,
+    "factor_floor": 0.30,
+    "factor_range": 0.70,
+    "lag_france": 1,
+    "lag_spain": 2
+  }
+}

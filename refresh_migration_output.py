@@ -35,6 +35,21 @@ from pathlib import Path
 from timezonefinder import TimezoneFinder
 
 OUTPUT_PATH = Path("data/migration/latest.json")
+SCORE_WEIGHTS_PATH = Path("data/migration/score_weights.json")
+
+
+def _load_score_weights() -> dict | None:
+    """Load user-configurable scoring weights from JSON if available."""
+    try:
+        if SCORE_WEIGHTS_PATH.exists():
+            with open(SCORE_WEIGHTS_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
+
+_USER_CFG = _load_score_weights()
 
 # Grid anchor: Tarifa, Spain
 ANCHOR_LAT  = 36.0
@@ -74,67 +89,72 @@ BENE_WIND_OPT_DIR   = 135.0   # optimal wind direction (degrees)
 BENE_WIND_FALLOFF_S = 225.0   # reach 0 at this many degrees CW past ZO (= near W)
 BENE_WIND_FALLOFF_E = 135.0   # reach 0 at this many degrees CCW past ZO (= near N)
 
-# Beaufort speed thresholds (km/h)
-BENE_WIND_SPEED_1BF =  1.0    # Bf 1 lower bound
-BENE_WIND_SPEED_3BF = 12.0    # Bf 3 lower bound (optimal range start)
-BENE_WIND_SPEED_3BF_MAX = 20.0  # Bf 3 upper bound
-BENE_WIND_SPEED_5BF = 38.0    # Bf 5 upper bound (optimal range end)
-BENE_WIND_SPEED_7BF = 50.0    # Bf 7 lower bound (migration suppressed)
+# Beaufort speed thresholds (km/h) — overridden by score_weights.json if present
+_ws = (_USER_CFG or {}).get("wind_snelheid_bf", {})
+BENE_WIND_SPEED_1BF = float(_ws.get("bf1", 1.0))
+BENE_WIND_SPEED_3BF = float(_ws.get("bf3_min", 12.0))
+BENE_WIND_SPEED_3BF_MAX = float(_ws.get("bf3_max", 20.0))
+BENE_WIND_SPEED_5BF = float(_ws.get("bf5_max", 38.0))
+BENE_WIND_SPEED_7BF = float(_ws.get("bf7_min", 50.0))
 
-# Wind direction correction factors
-# West-component penalty: the more westerly the wind, the lower the score
-WIND_WEST_PENALTY   = 0.5     # penalty multiplier for the west component
-# Sea-migration bonus for strong NW/W wind (>6 Bf): birds blown eastward over the North Sea
-WIND_SEA_BONUS      = 0.4     # bonus multiplier for the west component when >6 Bf
-# Direction range (degrees) in which the sea-migration bonus applies (SW to NNW)
-WIND_NW_W_DIR_MIN   = 225.0   # SW (lower bound)
-WIND_NW_W_DIR_MAX   = 330.0   # NNW (upper bound)
+# Wind direction correction factors — overridden by score_weights.json if present
+_wc = (_USER_CFG or {}).get("wind_correctie", {})
+WIND_WEST_PENALTY   = float(_wc.get("west_penalty", 0.5))
+WIND_SEA_BONUS      = float(_wc.get("zee_bonus", 0.4))
+WIND_NW_W_DIR_MIN   = float(_wc.get("nw_w_richting_min", 225.0))
+WIND_NW_W_DIR_MAX   = float(_wc.get("nw_w_richting_max", 330.0))
 
 WIND_DIRECTION_LABELS = (
     "N", "NNO", "NO", "ONO", "O", "OZO", "ZO", "ZZO",
     "Z", "ZZW", "ZW", "WZW", "W", "WNW", "NW", "NNW",
 )
-SPRING_ZERO_WIND_ALL_SPEEDS = frozenset({"W", "NW", "WNW", "NNW", "WZW"})
-SPRING_ZERO_WIND_STRICTLY_ABOVE_3BF = frozenset({"ZW", "N", "NNO"})
-SPRING_MAX_WIND_STRICTLY_BELOW_3BF = frozenset({"ZW", "ZZW"})
-
-# Score weights (must stay manually adjustable)
-SCORE_WEIGHT_WIND_DIRECTION = 0.70
-SCORE_WEIGHT_TEMPERATURE    = 0.30
-
-# Temperature score control points (°C, score 0.0–1.0)
-# Linear interpolation is applied between points, so these can be tuned manually
-# without changing the scoring code itself.
-TEMPERATURE_SCORE_POINTS = (
-    (-5.0, 0.00),
-    ( 2.0, 0.35),
-    ( 8.0, 0.60),
-    (10.0, 1.00),
-    (25.0, 1.00),
-    (27.0, 0.90),
-    (35.0, 0.00),
+SPRING_ZERO_WIND_ALL_SPEEDS = frozenset(
+    (_USER_CFG or {}).get("voorjaar_wind_nul_alle_snelheden", ["W", "NW", "WNW", "NNW", "WZW"])
+)
+SPRING_ZERO_WIND_STRICTLY_ABOVE_3BF = frozenset(
+    (_USER_CFG or {}).get("voorjaar_wind_nul_strikt_boven_3bf", ["ZW", "N", "NNO"])
+)
+SPRING_MAX_WIND_STRICTLY_BELOW_3BF = frozenset(
+    (_USER_CFG or {}).get("voorjaar_wind_max_strikt_onder_3bf", ["ZW", "ZZW"])
 )
 
+# Score weights — overridden by score_weights.json if present
+_sg = (_USER_CFG or {}).get("score_gewichten", {})
+SCORE_WEIGHT_WIND_DIRECTION = float(_sg.get("windrichting", 0.70))
+SCORE_WEIGHT_TEMPERATURE    = float(_sg.get("temperatuur", 0.30))
+
+# Temperature score control points (°C, score 0.0–1.0)
+# Overridden by score_weights.json if present
+_raw_temp_pts = (_USER_CFG or {}).get("temperatuur_score_punten", None)
+if _raw_temp_pts is not None:
+    TEMPERATURE_SCORE_POINTS = tuple(tuple(p) for p in _raw_temp_pts)
+else:
+    TEMPERATURE_SCORE_POINTS = (
+        (-5.0, 0.00),
+        ( 2.0, 0.35),
+        ( 8.0, 0.60),
+        (10.0, 1.00),
+        (25.0, 1.00),
+        (27.0, 0.90),
+        (35.0, 0.00),
+    )
+
 # ---------------------------------------------------------------------------
-# Supply corridor: upstream migration availability from the south
-# Science: migration is a pipeline — birds must first pass through Spain
-# (Tarifa corridor, 36–43°N) then France (43–49.5°N) before reaching BE/NL.
-# Rain fronts or headwinds in those zones block all supply, even when local
-# BE/NL conditions are excellent.
-# References: Berthold (2001); Ellegren (1993); Schaub et al. (2004 PNAS).
+# Supply corridor — overridden by score_weights.json if present
 # ---------------------------------------------------------------------------
+_ac = (_USER_CFG or {}).get("aanvoer_corridor", {})
 SUPPLY_FRANCE_LAT_MIN   = 43.0  # Southern France
 SUPPLY_FRANCE_LAT_MAX   = 49.5  # Northern France / Belgian border
 SUPPLY_SPAIN_LAT_MIN    = 36.0  # Tarifa / Southern Spain
 SUPPLY_SPAIN_LAT_MAX    = 43.0  # Northern Spain
 SUPPLY_CORRIDOR_LON_MIN = -2.0  # Western edge of migration route
 SUPPLY_CORRIDOR_LON_MAX = 10.0  # Eastern edge of migration route
-SUPPLY_LAG_FRANCE       = 1     # 1-day lag: French → Belgian passage
-SUPPLY_LAG_SPAIN        = 2     # 2-day lag: Spanish → Belgian passage
-SUPPLY_FRANCE_WEIGHT    = 0.60  # France corridor weight (more immediate influence)
-SUPPLY_SPAIN_WEIGHT     = 0.40  # Spain corridor weight
-SUPPLY_FACTOR_FLOOR     = 0.30  # Minimum supply factor (some birds always pass)
-SUPPLY_FACTOR_RANGE     = 0.70  # Working range of supply factor (1 − floor)
+SUPPLY_LAG_FRANCE       = int(_ac.get("lag_france", 1))
+SUPPLY_LAG_SPAIN        = int(_ac.get("lag_spain", 2))
+SUPPLY_FRANCE_WEIGHT    = float(_ac.get("france_weight", 0.60))
+SUPPLY_SPAIN_WEIGHT     = float(_ac.get("spain_weight", 0.40))
+SUPPLY_FACTOR_FLOOR     = float(_ac.get("factor_floor", 0.30))
+SUPPLY_FACTOR_RANGE     = float(_ac.get("factor_range", 0.70))
 DEFAULT_CORRIDOR_SCORE  = 0.50  # Fallback when corridor is empty
 
 _TF = TimezoneFinder()
