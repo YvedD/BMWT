@@ -925,7 +925,7 @@ def _daglichttijden_per_dag(n_dagen: int, ref_lat: float = KAART_CENTER_LAT,
             s = sun(loc.observer, date=dag, tzinfo=timezone.utc)
             sr = s["sunrise"].hour
             ss = s["sunset"].hour
-            # Garandeer minimaal bereik 06–20 als fallback
+            # Garandeer dat zonsopgang niet later dan 08:00 en zonsondergang niet eerder dan 17:00
             sr = min(sr, 8)
             ss = max(ss, 17)
         except Exception:
@@ -1190,7 +1190,7 @@ def laad_migratie_rasterdata_6daags(lat_step: float = None, lon_step: float = No
             uurscores_per_dag.append(uurscores)
 
             # Dagelijkse score = gemiddelde over enkel de daglichturen
-            daglicht_scores = [uurscores[u] for u in range(24) if sr_uur <= u <= ss_uur]
+            daglicht_scores = uurscores[sr_uur:ss_uur + 1]
             score = round(sum(daglicht_scores) / len(daglicht_scores), 3) if daglicht_scores else 0.5
 
             # Weerdisplay op 12:00 UTC voor popup / tooltip
