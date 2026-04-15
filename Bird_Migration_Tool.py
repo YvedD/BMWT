@@ -62,6 +62,24 @@ _STANDAARD_SCORE_GEWICHTEN: dict = {
         "bf5_max": 38.0,
         "bf7_min": 50.0,
     },
+    "windrichting_beaufort_scores": {
+        "N":   {"1": 0.00, "2": 0.00, "3": 0.00, "4": 0.00, "5": 0.00, "6": 0.00},
+        "NNO": {"1": 0.01, "2": 0.02, "3": 0.04, "4": 0.03, "5": 0.02, "6": 0.01},
+        "NO":  {"1": 0.04, "2": 0.09, "3": 0.15, "4": 0.13, "5": 0.10, "6": 0.05},
+        "ONO": {"1": 0.09, "2": 0.19, "3": 0.31, "4": 0.28, "5": 0.20, "6": 0.11},
+        "O":   {"1": 0.15, "2": 0.30, "3": 0.50, "4": 0.45, "5": 0.32, "6": 0.17},
+        "OZO": {"1": 0.21, "2": 0.41, "3": 0.69, "4": 0.62, "5": 0.45, "6": 0.24},
+        "ZO":  {"1": 0.26, "2": 0.51, "3": 0.85, "4": 0.77, "5": 0.55, "6": 0.30},
+        "ZZO": {"1": 0.29, "2": 0.58, "3": 0.96, "4": 0.87, "5": 0.63, "6": 0.34},
+        "Z":   {"1": 0.30, "2": 0.60, "3": 1.00, "4": 0.90, "5": 0.65, "6": 0.35},
+        "ZZW": {"1": 0.21, "2": 0.42, "3": 0.69, "4": 0.62, "5": 0.45, "6": 0.24},
+        "ZW":  {"1": 0.11, "2": 0.22, "3": 0.36, "4": 0.32, "5": 0.23, "6": 0.13},
+        "WZW": {"1": 0.01, "2": 0.03, "3": 0.04, "4": 0.04, "5": 0.03, "6": 0.02},
+        "W":   {"1": 0.00, "2": 0.00, "3": 0.00, "4": 0.00, "5": 0.00, "6": 0.00},
+        "WNW": {"1": 0.00, "2": 0.00, "3": 0.00, "4": 0.00, "5": 0.00, "6": 0.00},
+        "NW":  {"1": 0.00, "2": 0.00, "3": 0.00, "4": 0.00, "5": 0.00, "6": 0.00},
+        "NNW": {"1": 0.00, "2": 0.00, "3": 0.00, "4": 0.00, "5": 0.00, "6": 0.00},
+    },
     "voorjaar_wind_nul_alle_snelheden": ["W", "NW", "WNW", "NNW", "WZW"],
     "voorjaar_wind_nul_strikt_boven_3bf": ["ZW", "N", "NNO"],
     "voorjaar_wind_max_strikt_onder_3bf": ["ZW", "ZZW"],
@@ -359,6 +377,38 @@ BENE_WIND_SPEED_3BF = 12.0    # Bf 3 ondergrens (= optimum ondergrens)
 BENE_WIND_SPEED_3BF_MAX = 20.0  # Bf 3 bovengrens
 BENE_WIND_SPEED_5BF = 38.0    # Bf 5 bovengrens (= optimum bovengrens)
 BENE_WIND_SPEED_7BF = 50.0    # Bf 7 ondergrens (= trek grotendeels afgeremd)
+
+_ALLE_RICHTINGEN = ["N", "NNO", "NO", "ONO", "O", "OZO", "ZO", "ZZO",
+                    "Z", "ZZW", "ZW", "WZW", "W", "WNW", "NW", "NNW"]
+
+
+def _windrichting_bf_score(wind_richting_graden: float, wind_snelheid_kmh: float) -> float:
+    """Zoek de windrichting×Beaufort score op uit de configuratiematrix.
+
+    Parameters
+    ----------
+    wind_richting_graden : float
+        Windrichting in graden (0–360).
+    wind_snelheid_kmh : float
+        Windsnelheid in km/h.
+
+    Returns
+    -------
+    float
+        Score 0.0–1.0 uit de gebruikersdefinieerbare matrix.
+    """
+    cfg = _cfg()
+    matrix = cfg.get("windrichting_beaufort_scores")
+    if not matrix:
+        # Fallback: oude cosine-formule als matrix niet beschikbaar
+        south_score = (1.0 - math.cos(math.radians(wind_richting_graden))) / 2.0
+        west_component = max(0.0, -math.sin(math.radians(wind_richting_graden)))
+        return max(0.0, south_score - 0.70 * west_component)
+
+    richting = graden_naar_windrichting(wind_richting_graden)
+    bf = max(1, min(6, _kmh_naar_beaufort_klasse(wind_snelheid_kmh)))
+    richting_scores = matrix.get(richting, {})
+    return float(richting_scores.get(str(bf), 0.0))
 
 # Windrichting-correctiefactoren
 # West-component strafterm: hoe meer West-component, hoe lager de score
@@ -746,6 +796,10 @@ def migratie_bereken_score(weer, lat: float = 0.0, lon: float = 0.0):
     """
     Bereken migratiescore (0.0 = extreem ongunstig, 1.0 = extreem gunstig).
 
+    De windrichting×Beaufort score wordt opgezocht uit de gebruikersdefinieerbare
+    matrix (16 richtingen × 6 Bf-klassen). De temperatuurscore wordt berekend via
+    de stuksgewijze lineaire curve. Beide worden gewogen gecombineerd.
+
     Gewichten en parameters worden gelezen uit de persistente configuratie
     (st.session_state.score_cfg / data/migration/score_weights.json).
     """
@@ -757,18 +811,9 @@ def migratie_bereken_score(weer, lat: float = 0.0, lon: float = 0.0):
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
 
-    wc = cfg["wind_correctie"]
-    ws = cfg["wind_snelheid_bf"]
     sg = cfg["score_gewichten"]
 
-    south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
-    west_component = max(0.0, -math.sin(math.radians(wind_richting)))
-    is_nw_w_sterk = (wc["nw_w_richting_min"] <= wind_richting <= wc["nw_w_richting_max"]) and (wind_kracht >= ws["bf7_min"])
-    if is_nw_w_sterk:
-        wind_richting_score = min(1.0, south_score + west_component * wc["zee_bonus"])
-    else:
-        wind_richting_score = max(0.0, south_score - wc["west_penalty"] * west_component)
-
+    wind_richting_score = _windrichting_bf_score(wind_richting, wind_kracht)
     temp_score = _temperatuur_score(temperatuur)
 
     score = (
@@ -1102,7 +1147,11 @@ def migratie_bereken_score_uitgebreid(
     lon: float = 0.0,
 ) -> float:
     """
-    Bereken migratiescore (0.0–1.0) op basis van windrichting en temperatuur.
+    Bereken migratiescore (0.0–1.0) op basis van windrichting×Beaufort en temperatuur.
+
+    De windrichting×Beaufort score wordt opgezocht uit de gebruikersdefinieerbare
+    matrix (16 richtingen × 6 Bf-klassen). De temperatuurscore wordt berekend via
+    de stuksgewijze lineaire curve. Beide worden gewogen gecombineerd.
 
     Gewichten en parameters worden gelezen uit de persistente configuratie
     (st.session_state.score_cfg / data/migration/score_weights.json).
@@ -1115,18 +1164,9 @@ def migratie_bereken_score_uitgebreid(
     wind_richting = float(weer.get("wind_direction_10m", 180))
     temperatuur   = float(weer.get("temperature_2m", 12))
 
-    wc = cfg["wind_correctie"]
-    ws = cfg["wind_snelheid_bf"]
     sg = cfg["score_gewichten"]
 
-    south_score = (1.0 - math.cos(math.radians(wind_richting))) / 2.0
-    west_component = max(0.0, -math.sin(math.radians(wind_richting)))
-    is_nw_w_sterk = (wc["nw_w_richting_min"] <= wind_richting <= wc["nw_w_richting_max"]) and (wind_kracht >= ws["bf7_min"])
-    if is_nw_w_sterk:
-        wind_richting_score = min(1.0, south_score + west_component * wc["zee_bonus"])
-    else:
-        wind_richting_score = max(0.0, south_score - wc["west_penalty"] * west_component)
-
+    wind_richting_score = _windrichting_bf_score(wind_richting, wind_kracht)
     temp_score = _temperatuur_score(temperatuur)
 
     score = (
@@ -1976,12 +2016,19 @@ with tabs[2]:
                 if selected_uur is not None
                 else "Weerdisplay: 12:00 UTC · Score: daglichturen"
             )
+            # Windrichting×Beaufort component score voor popup
+            _wb_matrix = _cfg().get("windrichting_beaufort_scores", {})
+            _disp_bf_int = int(disp_wind_kracht.replace("Bf", "")) if disp_wind_kracht.replace("Bf", "").isdigit() else 0
+            _disp_bf_clamped = max(1, min(6, _disp_bf_int))
+            _wb_component = float(_wb_matrix.get(disp_wind_richting, {}).get(str(_disp_bf_clamped), 0.0))
+            _wb_pct = int(_wb_component * 100)
             popup_html = (
                 f"<div style='font-size:13px;min-width:210px;'>"
                 + f"<b>{score_info}</b><br>"
                 f"<b>Klasse: {klasse_lbl}</b><br>"
                 f"📍 {punt['latitude']}°N, {punt['longitude']}°E<br>"
-                f"🧭 Wind: {disp_wind_richting} {disp_wind_kracht} Bf<br>"
+                f"🧭 Wind: {disp_wind_richting} {disp_wind_kracht} Bf "
+                f"<span style='color:#4a90d9;'>(wind score: {_wb_pct}%)</span><br>"
                 f"🌡️ Temp: {disp_temp} °C<br>"
                 f"🌧️ Neerslag: {disp_neerslag} mm<br>"
                 f"📊 Druk: {disp_druk} hPa<br>"
@@ -2300,7 +2347,55 @@ en zijn meteen actief bij het heropstarten van de applicatie.
 
     st.divider()
 
-    # --- 4. Temperatuur-score curve ---
+    # --- 4. Windrichting × Beaufort score-matrix ---
+    st.subheader("🧭💨 Windrichting × Beaufort score-matrix")
+    st.caption(
+        "Stel voor **elk van de 16 windrichtingen** en **elke Beaufort-klasse (1–6)** "
+        "een eigen score in (0.00–1.00). Deze matrix bepaalt de windcomponent van de "
+        "migratiescore. Bijvoorbeeld: ZO bij 3 Bf krijgt een hogere score dan ZO bij 1 Bf."
+    )
+    alle_richtingen_matrix = ["N", "NNO", "NO", "ONO", "O", "OZO", "ZO", "ZZO",
+                              "Z", "ZZW", "ZW", "WZW", "W", "WNW", "NW", "NNW"]
+    wb_scores = cfg.get("windrichting_beaufort_scores",
+                        _STANDAARD_SCORE_GEWICHTEN["windrichting_beaufort_scores"])
+    wb_rows = []
+    for r in alle_richtingen_matrix:
+        r_scores = wb_scores.get(r, {})
+        wb_rows.append({
+            "Richting": r,
+            "1 Bf": float(r_scores.get("1", 0.0)),
+            "2 Bf": float(r_scores.get("2", 0.0)),
+            "3 Bf": float(r_scores.get("3", 0.0)),
+            "4 Bf": float(r_scores.get("4", 0.0)),
+            "5 Bf": float(r_scores.get("5", 0.0)),
+            "6 Bf": float(r_scores.get("6", 0.0)),
+        })
+    wb_df = pd.DataFrame(wb_rows)
+    edited_wb = st.data_editor(
+        wb_df,
+        use_container_width=True,
+        key="algo_wb_editor",
+        hide_index=True,
+        disabled=["Richting"],
+        column_config={
+            "Richting": st.column_config.TextColumn("Richting", width="small"),
+            "1 Bf": st.column_config.NumberColumn("1 Bf", min_value=0.0, max_value=1.0, step=0.01, format="%.2f"),
+            "2 Bf": st.column_config.NumberColumn("2 Bf", min_value=0.0, max_value=1.0, step=0.01, format="%.2f"),
+            "3 Bf": st.column_config.NumberColumn("3 Bf", min_value=0.0, max_value=1.0, step=0.01, format="%.2f"),
+            "4 Bf": st.column_config.NumberColumn("4 Bf", min_value=0.0, max_value=1.0, step=0.01, format="%.2f"),
+            "5 Bf": st.column_config.NumberColumn("5 Bf", min_value=0.0, max_value=1.0, step=0.01, format="%.2f"),
+            "6 Bf": st.column_config.NumberColumn("6 Bf", min_value=0.0, max_value=1.0, step=0.01, format="%.2f"),
+        },
+    )
+    st.info(
+        "💡 **Tip:** Zuidoost (ZO) bij 3 Bf is in het voorjaar vaak optimaal voor "
+        "trekvogels richting België/Nederland. Noordoost (NO) bij 3 Bf is goed voor "
+        "steltlopers! Pas de waarden aan op basis van je veldobservaties."
+    )
+
+    st.divider()
+
+    # --- 5. Temperatuur-score curve ---
     st.subheader("🌡️ Temperatuur-score curve")
     st.caption(
         "Elk punt koppelt een temperatuur (°C) aan een score (0.0–1.0). "
@@ -2322,7 +2417,7 @@ en zijn meteen actief bij het heropstarten van de applicatie.
 
     st.divider()
 
-    # --- 5. Voorjaarswind-overrides ---
+    # --- 6. Voorjaarswind-overrides ---
     st.subheader("🧭 Voorjaarswind overrides")
     st.caption(
         "Windrichtingen die in het voorjaar een vaste score krijgen, ongeacht andere omstandigheden."
@@ -2357,7 +2452,7 @@ en zijn meteen actief bij het heropstarten van de applicatie.
 
     st.divider()
 
-    # --- 6. Aanvoercorridor (supply chain) ---
+    # --- 7. Aanvoercorridor (supply chain) ---
     st.subheader("📦 Aanvoercorridor (supply chain)")
     st.caption(
         "Hoe sterk weegt de doortocht door Frankrijk en Spanje mee in de BE/NL-score?"
@@ -2412,6 +2507,19 @@ en zijn meteen actief bij het heropstarten van de applicatie.
             temp_rows = temp_rows.sort_values("Temperatuur (°C)")
             new_temp = [[float(r["Temperatuur (°C)"]), float(r["Score (0–1)"])] for _, r in temp_rows.iterrows()]
 
+            # Bouw windrichting × Beaufort matrix op uit de data_editor
+            new_wb_scores = {}
+            for _, rij in edited_wb.iterrows():
+                r = rij["Richting"]
+                new_wb_scores[r] = {
+                    "1": round(float(rij["1 Bf"]), 2),
+                    "2": round(float(rij["2 Bf"]), 2),
+                    "3": round(float(rij["3 Bf"]), 2),
+                    "4": round(float(rij["4 Bf"]), 2),
+                    "5": round(float(rij["5 Bf"]), 2),
+                    "6": round(float(rij["6 Bf"]), 2),
+                }
+
             nieuwe_cfg = {
                 "score_gewichten": {
                     "windrichting": round(sg_wind, 2),
@@ -2431,6 +2539,7 @@ en zijn meteen actief bij het heropstarten van de applicatie.
                     "bf5_max": round(bf5_max, 1),
                     "bf7_min": round(bf7_min, 1),
                 },
+                "windrichting_beaufort_scores": new_wb_scores,
                 "voorjaar_wind_nul_alle_snelheden": vw_nul_alle,
                 "voorjaar_wind_nul_strikt_boven_3bf": vw_nul_strikt,
                 "voorjaar_wind_max_strikt_onder_3bf": vw_max_strikt,
@@ -2460,6 +2569,134 @@ en zijn meteen actief bij het heropstarten van de applicatie.
     # Toon huidige configuratie als JSON (read-only)
     with st.expander("📄 Huidige configuratie (JSON)"):
         st.json(cfg)
+
+    st.divider()
+
+    # --- 8. Observatie-feedback (AI trainingsdata) ---
+    st.subheader("🤖 Observatie-feedback — Trainingsdata")
+    st.markdown(
+        "Log hier je **veldobservaties**: markeer of een bepaalde combinatie van "
+        "weersomstandigheden effectief een goede of slechte telling opleverde. "
+        "Deze data wordt opgeslagen en kan gebruikt worden om de score-matrix "
+        "te verbeteren op basis van echte ervaring."
+    )
+    _OBS_PATH = Path("data/migration/observations.json")
+
+    def _laad_observaties() -> list:
+        try:
+            if _OBS_PATH.exists():
+                with open(_OBS_PATH, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return []
+
+    def _sla_observaties_op(obs: list) -> None:
+        _OBS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_OBS_PATH, "w", encoding="utf-8") as f:
+            json.dump(obs, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+
+    if "observaties" not in st.session_state:
+        st.session_state.observaties = _laad_observaties()
+
+    col_obs1, col_obs2, col_obs3, col_obs4 = st.columns(4)
+    with col_obs1:
+        obs_datum = st.date_input("📅 Datum observatie", value=date.today(), key="obs_datum")
+    with col_obs2:
+        obs_richting = st.selectbox(
+            "🧭 Windrichting",
+            options=_ALLE_RICHTINGEN,
+            index=6,  # ZO
+            key="obs_richting",
+        )
+    with col_obs3:
+        obs_bf = st.selectbox("💨 Beaufort", options=[1, 2, 3, 4, 5, 6], index=2, key="obs_bf")
+    with col_obs4:
+        obs_temp = st.number_input("🌡️ Temperatuur (°C)", value=15.0, step=0.5, key="obs_temp")
+
+    col_obs5, col_obs6, col_obs7 = st.columns(3)
+    with col_obs5:
+        obs_neerslag = st.number_input("🌧️ Neerslag (%)", value=0.0, min_value=0.0,
+                                       max_value=100.0, step=1.0, key="obs_neerslag")
+    with col_obs6:
+        obs_kwaliteit = st.selectbox(
+            "📊 Resultaat telling",
+            options=["Uitstekend", "Goed", "Matig", "Slecht"],
+            index=1,
+            key="obs_kwaliteit",
+        )
+    with col_obs7:
+        obs_notitie = st.text_input("📝 Opmerking (optioneel)", key="obs_notitie")
+
+    if st.button("➕ Observatie opslaan", key="obs_save"):
+        kwaliteit_score = {"Uitstekend": 1.0, "Goed": 0.7, "Matig": 0.4, "Slecht": 0.1}
+        nieuwe_obs = {
+            "datum": str(obs_datum),
+            "windrichting": obs_richting,
+            "beaufort": obs_bf,
+            "temperatuur": obs_temp,
+            "neerslag_pct": obs_neerslag,
+            "kwaliteit": obs_kwaliteit,
+            "kwaliteit_score": kwaliteit_score[obs_kwaliteit],
+            "notitie": obs_notitie,
+        }
+        st.session_state.observaties.append(nieuwe_obs)
+        _sla_observaties_op(st.session_state.observaties)
+        st.success(f"✅ Observatie opgeslagen: {obs_richting} {obs_bf} Bf, {obs_temp}°C → {obs_kwaliteit}")
+
+    # Toon opgeslagen observaties
+    if st.session_state.observaties:
+        with st.expander(f"📋 Opgeslagen observaties ({len(st.session_state.observaties)})", expanded=False):
+            obs_df = pd.DataFrame(st.session_state.observaties)
+            st.dataframe(obs_df, use_container_width=True, hide_index=True)
+
+            if st.button("🗑️ Alle observaties wissen", key="obs_clear"):
+                st.session_state.observaties = []
+                _sla_observaties_op([])
+                st.info("Observaties gewist.")
+                st.rerun()
+
+        # AI suggestie: bereken gemiddelde kwaliteit per richting×Bf
+        with st.expander("🤖 AI suggestie — Score-aanpassing op basis van observaties", expanded=False):
+            st.caption(
+                "Op basis van je opgeslagen observaties berekent het systeem de "
+                "gemiddelde waargenomen kwaliteit per windrichting × Beaufort combinatie. "
+                "Vergelijk dit met je huidige matrixwaarden om te zien waar aanpassingen nodig zijn."
+            )
+            obs_list = st.session_state.observaties
+            # Groepeer per richting×Bf
+            suggestie_data = {}
+            for obs in obs_list:
+                key = (obs["windrichting"], obs["beaufort"])
+                if key not in suggestie_data:
+                    suggestie_data[key] = []
+                suggestie_data[key].append(obs["kwaliteit_score"])
+
+            if suggestie_data:
+                sug_rows = []
+                for (richting, bf), scores in sorted(suggestie_data.items(),
+                                                      key=lambda x: (_ALLE_RICHTINGEN.index(x[0][0])
+                                                                     if x[0][0] in _ALLE_RICHTINGEN else 0,
+                                                                     x[0][1])):
+                    gem = sum(scores) / len(scores)
+                    huidige = float(wb_scores.get(richting, {}).get(str(bf), 0.0))
+                    verschil = round(gem - huidige, 2)
+                    sug_rows.append({
+                        "Richting": richting,
+                        "Bf": bf,
+                        "Observaties": len(scores),
+                        "Gem. kwaliteit": round(gem, 2),
+                        "Huidige score": huidige,
+                        "Verschil": verschil,
+                        "Suggestie": "↑ Verhogen" if verschil > 0.1 else ("↓ Verlagen" if verschil < -0.1 else "✓ OK"),
+                    })
+                sug_df = pd.DataFrame(sug_rows)
+                st.dataframe(sug_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("Nog geen observaties beschikbaar. Log enkele veldobservaties om suggesties te krijgen.")
+    else:
+        st.info("Nog geen observaties opgeslagen. Gebruik het formulier hierboven om je eerste observatie te loggen.")
 
 
 with tabs[7]:
