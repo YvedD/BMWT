@@ -142,7 +142,7 @@ def _sla_score_gewichten_op(cfg: dict) -> tuple[bool, str]:
     )
 
 
-def _lees_optionele_secret(*namen: str, default: str = "") -> str:
+def _lees_optionele_secret(namen: tuple[str, ...], default: str = "") -> str:
     """Lees een optionele waarde uit Streamlit secrets of environment variables."""
     for naam in namen:
         try:
@@ -151,8 +151,8 @@ def _lees_optionele_secret(*namen: str, default: str = "") -> str:
                 return str(waarde_secret).strip()
         except KeyError:
             pass
-        except Exception as exc:
-            _LOGGER.debug("Kon Streamlit secret '%s' niet lezen: %s", naam, exc)
+        except Exception:
+            _LOGGER.debug("Kon Streamlit secrets niet uitlezen; environment fallback wordt gebruikt.")
         waarde = os.environ.get(naam)
         if waarde:
             return waarde.strip()
@@ -160,7 +160,7 @@ def _lees_optionele_secret(*namen: str, default: str = "") -> str:
 
 
 def _bepaal_github_branch(repo: str, headers: dict) -> str:
-    branch = _lees_optionele_secret("github_branch", "GITHUB_BRANCH", "GITHUB_TARGET_BRANCH", default="")
+    branch = _lees_optionele_secret(("github_branch", "GITHUB_BRANCH", "GITHUB_TARGET_BRANCH"), default="")
     if branch:
         return branch
 
@@ -168,21 +168,21 @@ def _bepaal_github_branch(repo: str, headers: dict) -> str:
         resp = requests.get(f"{_GITHUB_API_BASE}/repos/{repo}", headers=headers, timeout=15)
         if resp.ok:
             return resp.json().get("default_branch", "main")
-    except requests.RequestException as exc:
-        _LOGGER.warning("Kon default branch voor %s niet bepalen: %s", repo, exc)
+    except requests.RequestException:
+        _LOGGER.warning("Kon default branch niet bepalen; gebruik fallback 'main'.")
     return "main"
 
 
 def _sync_json_naar_github(bestandspad: Path, inhoud: str, commit_message: str) -> tuple[bool, str]:
     """Sync een JSON-bestand naar de GitHub-repo zodat Streamlit Cloud data bewaart."""
-    token = _lees_optionele_secret("github_token", "GITHUB_TOKEN", "GH_TOKEN")
+    token = _lees_optionele_secret(("github_token", "GITHUB_TOKEN", "GH_TOKEN"))
     if not token:
         return False, (
             "Lokaal opgeslagen, maar GitHub-sync staat niet aan. "
             "Voeg in Streamlit Cloud een secret `github_token` toe om dit bestand online te bewaren."
         )
 
-    repo = _lees_optionele_secret("github_repository", "GITHUB_REPOSITORY", default=_GITHUB_REPO_DEFAULT)
+    repo = _lees_optionele_secret(("github_repository", "GITHUB_REPOSITORY"), default=_GITHUB_REPO_DEFAULT)
     headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {token}",
