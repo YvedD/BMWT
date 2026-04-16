@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-04-15T19:49:41Z",
+  "updated_at": "2026-04-16T20:12:24Z",
   "ttl_minutes": 60,
   "source": "bmwt-github-actions-v5-tarifa-raster-8day-blockade-24h-avg",
   "raster": {
@@ -12,49 +12,49 @@
   },
   "day_aggregates": [
     {
-      "date": "2026-04-15",
+      "date": "2026-04-16",
       "day_offset": 0,
       "aggregate_score": 0.5,
       "aggregate_confidence": 0.3
     },
     {
-      "date": "2026-04-16",
+      "date": "2026-04-17",
       "day_offset": 1,
       "aggregate_score": 0.5,
       "aggregate_confidence": 0.3
     },
     {
-      "date": "2026-04-17",
+      "date": "2026-04-18",
       "day_offset": 2,
       "aggregate_score": 0.5,
       "aggregate_confidence": 0.3
     },
     {
-      "date": "2026-04-18",
+      "date": "2026-04-19",
       "day_offset": 3,
       "aggregate_score": 0.5,
       "aggregate_confidence": 0.3
     },
     {
-      "date": "2026-04-19",
+      "date": "2026-04-20",
       "day_offset": 4,
       "aggregate_score": 0.5,
       "aggregate_confidence": 0.3
     },
     {
-      "date": "2026-04-20",
+      "date": "2026-04-21",
       "day_offset": 5,
       "aggregate_score": 0.5,
       "aggregate_confidence": 0.3
     },
     {
-      "date": "2026-04-21",
+      "date": "2026-04-22",
       "day_offset": 6,
       "aggregate_score": 0.5,
       "aggregate_confidence": 0.3
     },
     {
-      "date": "2026-04-22",
+      "date": "2026-04-23",
       "day_offset": 7,
       "aggregate_score": 0.5,
       "aggregate_confidence": 0.3
