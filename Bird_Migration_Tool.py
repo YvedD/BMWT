@@ -1,6 +1,7 @@
 import streamlit as st
 from geopy.geocoders import Nominatim, OpenCage
 import folium
+import base64
 import json
 import requests
 from streamlit_folium import st_folium
@@ -29,6 +30,9 @@ _TF = TimezoneFinder()
 # Persistent scoring configuratie — laden / opslaan via JSON
 # ---------------------------------------------------------------------------
 _SCORE_WEIGHTS_PATH = Path("data/migration/score_weights.json")
+_OBS_PATH = Path("data/migration/observations.json")
+_GITHUB_API_BASE = "https://api.github.com"
+_GITHUB_REPO_DEFAULT = "YvedD/BMWT"
 
 # Standaardwaarden (worden gebruikt als het JSON-bestand ontbreekt)
 _STANDAARD_SCORE_GEWICHTEN: dict = {
@@ -125,14 +129,111 @@ def _laad_score_gewichten() -> dict:
     return json.loads(json.dumps(_STANDAARD_SCORE_GEWICHTEN))
 
 
-def _sla_score_gewichten_op(cfg: dict) -> None:
+def _sla_score_gewichten_op(cfg: dict) -> tuple[bool, str]:
     """Sla scoring-parameters op naar JSON (persistent)."""
-    _SCORE_WEIGHTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     cfg_out = {"_info": "Handmatig aanpasbare parameters voor de migratie-score berekening. Wijzig waarden via het tabblad Algoritme's in de app, of bewerk dit bestand rechtstreeks."}
     cfg_out.update(cfg)
-    with open(_SCORE_WEIGHTS_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg_out, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    return _sla_json_duurzaam_op(
+        _SCORE_WEIGHTS_PATH,
+        cfg_out,
+        commit_message="chore: update score weights from Streamlit",
+    )
+
+
+def _lees_optionele_secret(*namen: str, default: str = "") -> str:
+    """Lees een optionele waarde uit Streamlit secrets of environment variables."""
+    for naam in namen:
+        try:
+            if naam in st.secrets and st.secrets[naam]:
+                return str(st.secrets[naam]).strip()
+        except Exception:
+            pass
+        waarde = os.environ.get(naam)
+        if waarde:
+            return waarde.strip()
+    return default
+
+
+def _bepaal_github_branch(repo: str, headers: dict) -> str:
+    branch = _lees_optionele_secret("github_branch", "GITHUB_BRANCH", "GITHUB_TARGET_BRANCH")
+    if branch:
+        return branch
+
+    try:
+        resp = requests.get(f"{_GITHUB_API_BASE}/repos/{repo}", headers=headers, timeout=15)
+        if resp.ok:
+            return resp.json().get("default_branch", "main")
+    except requests.RequestException:
+        pass
+    return "main"
+
+
+def _sync_json_naar_github(bestandspad: Path, inhoud: str, commit_message: str) -> tuple[bool, str]:
+    """Sync een JSON-bestand naar de GitHub-repo zodat Streamlit Cloud data bewaart."""
+    token = _lees_optionele_secret("github_token", "GITHUB_TOKEN", "GH_TOKEN")
+    if not token:
+        return False, (
+            "Lokaal opgeslagen, maar GitHub-sync staat niet aan. "
+            "Voeg in Streamlit Cloud een secret `github_token` toe om dit bestand online te bewaren."
+        )
+
+    repo = _lees_optionele_secret("github_repository", "GITHUB_REPOSITORY", default=_GITHUB_REPO_DEFAULT)
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    branch = _bepaal_github_branch(repo, headers)
+    rel_path = bestandspad.as_posix()
+    url = f"{_GITHUB_API_BASE}/repos/{repo}/contents/{rel_path}"
+
+    payload = {
+        "message": commit_message,
+        "content": base64.b64encode(inhoud.encode("utf-8")).decode("ascii"),
+        "branch": branch,
+    }
+
+    try:
+        bestaand = requests.get(url, headers=headers, params={"ref": branch}, timeout=15)
+        if bestaand.status_code == 200:
+            payload["sha"] = bestaand.json().get("sha")
+        elif bestaand.status_code != 404:
+            melding = bestaand.json().get("message", f"HTTP {bestaand.status_code}")
+            return False, f"GitHub-sync mislukt bij uitlezen van {rel_path}: {melding}"
+
+        resp = requests.put(url, headers=headers, json=payload, timeout=20)
+        if resp.ok:
+            return True, f"Online bewaard in `{repo}` op branch `{branch}`."
+        melding = resp.json().get("message", f"HTTP {resp.status_code}")
+        return False, f"GitHub-sync mislukt voor {rel_path}: {melding}"
+    except (requests.RequestException, ValueError) as exc:
+        return False, f"GitHub-sync mislukt voor {rel_path}: {exc}"
+
+
+def _sla_json_duurzaam_op(bestandspad: Path, payload: object, commit_message: str) -> tuple[bool, str]:
+    """Sla JSON lokaal op en sync indien mogelijk ook terug naar GitHub."""
+    bestandspad.parent.mkdir(parents=True, exist_ok=True)
+    inhoud = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    bestandspad.write_text(inhoud, encoding="utf-8")
+    return _sync_json_naar_github(bestandspad, inhoud, commit_message)
+
+
+def _laad_observaties() -> list:
+    try:
+        if _OBS_PATH.exists():
+            with open(_OBS_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return []
+
+
+def _sla_observaties_op(obs: list) -> tuple[bool, str]:
+    return _sla_json_duurzaam_op(
+        _OBS_PATH,
+        obs,
+        commit_message="chore: update AI observations from Streamlit",
+    )
 
 
 # Laad configuratie bij het opstarten en bewaar in session_state
@@ -2651,17 +2752,25 @@ en zijn meteen actief bij het heropstarten van de applicatie.
                 },
             }
             st.session_state.score_cfg = nieuwe_cfg
-            _sla_score_gewichten_op(nieuwe_cfg)
+            sync_ok, sync_msg = _sla_score_gewichten_op(nieuwe_cfg)
             # Wis de migratie-rastercache zodat de volgende keer met de nieuwe waarden gerekend wordt
             laad_migratie_rasterdata_6daags.clear()
             st.success("✅ Parameters opgeslagen! Migratie-rastercache gewist — de volgende keer worden de nieuwe waarden gebruikt.")
+            if sync_ok:
+                st.caption(f"☁️ {sync_msg}")
+            else:
+                st.warning(f"⚠️ {sync_msg}")
 
     with col_btn2:
         if st.button("🔄 Herstel standaardwaarden", key="algo_reset"):
             st.session_state.score_cfg = json.loads(json.dumps(_STANDAARD_SCORE_GEWICHTEN))
-            _sla_score_gewichten_op(st.session_state.score_cfg)
+            sync_ok, sync_msg = _sla_score_gewichten_op(st.session_state.score_cfg)
             laad_migratie_rasterdata_6daags.clear()
             st.info("🔄 Standaardwaarden hersteld. Herlaad de pagina om de wijzigingen te zien.")
+            if sync_ok:
+                st.caption(f"☁️ {sync_msg}")
+            else:
+                st.warning(f"⚠️ {sync_msg}")
             st.rerun()
 
     # Toon huidige configuratie als JSON (read-only)
@@ -2678,23 +2787,6 @@ en zijn meteen actief bij het heropstarten van de applicatie.
         "Deze data wordt opgeslagen en kan gebruikt worden om de score-matrix "
         "te verbeteren op basis van echte ervaring."
     )
-    _OBS_PATH = Path("data/migration/observations.json")
-
-    def _laad_observaties() -> list:
-        try:
-            if _OBS_PATH.exists():
-                with open(_OBS_PATH, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        except Exception:
-            pass
-        return []
-
-    def _sla_observaties_op(obs: list) -> None:
-        _OBS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(_OBS_PATH, "w", encoding="utf-8") as f:
-            json.dump(obs, f, indent=2, ensure_ascii=False)
-            f.write("\n")
-
     if "observaties" not in st.session_state:
         st.session_state.observaties = _laad_observaties()
 
@@ -2740,8 +2832,12 @@ en zijn meteen actief bij het heropstarten van de applicatie.
             "notitie": obs_notitie,
         }
         st.session_state.observaties.append(nieuwe_obs)
-        _sla_observaties_op(st.session_state.observaties)
+        sync_ok, sync_msg = _sla_observaties_op(st.session_state.observaties)
         st.success(f"✅ Observatie opgeslagen: {obs_richting} {obs_bf} Bf, {obs_temp}°C → {obs_kwaliteit}")
+        if sync_ok:
+            st.caption(f"☁️ {sync_msg}")
+        else:
+            st.warning(f"⚠️ {sync_msg}")
 
     # Toon opgeslagen observaties
     if st.session_state.observaties:
@@ -2751,8 +2847,12 @@ en zijn meteen actief bij het heropstarten van de applicatie.
 
             if st.button("🗑️ Alle observaties wissen", key="obs_clear"):
                 st.session_state.observaties = []
-                _sla_observaties_op([])
+                sync_ok, sync_msg = _sla_observaties_op([])
                 st.info("Observaties gewist.")
+                if sync_ok:
+                    st.caption(f"☁️ {sync_msg}")
+                else:
+                    st.warning(f"⚠️ {sync_msg}")
                 st.rerun()
 
         # AI suggestie: bereken gemiddelde kwaliteit per richting×Bf
