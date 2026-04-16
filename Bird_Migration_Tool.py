@@ -229,7 +229,7 @@ def _haal_firestore_service_account_info() -> dict | None:
 @st.cache_resource(show_spinner=False)
 def _maak_firestore_client(service_account_json: str):
     if firebase_admin is None or credentials is None or firestore is None:
-        return None, "Firestore dependency ontbreekt; installeer `firebase-admin`."
+        return None, "Firestore dependency kon niet geladen worden; controleer of `firebase-admin` correct is geïnstalleerd."
     if not service_account_json:
         return None, (
             "Firestore is niet geconfigureerd. Voeg in Streamlit Cloud een secret "
@@ -361,7 +361,7 @@ def _normaliseer_observatie(observatie: dict) -> dict | None:
     except (TypeError, ValueError):
         return None
 
-    if not datum or not windrichting or beaufort <= 0 or not kwaliteit:
+    if not datum or not windrichting or beaufort < 0 or not kwaliteit:
         return None
 
     return {
@@ -398,16 +398,20 @@ def _importeer_observaties_naar_firestore(client, observaties: list) -> bool:
     if not observaties or firestore is None:
         return False
 
-    collection = client.collection(_haal_firestore_collection())
-    for start in range(0, len(observaties), _FIRESTORE_BATCH_SIZE):
-        batch = client.batch()
-        for observatie in observaties[start:start + _FIRESTORE_BATCH_SIZE]:
-            batch.set(
-                collection.document(),
-                {**observatie, "created_at": firestore.SERVER_TIMESTAMP},
-            )
-        batch.commit()
-    return True
+    try:
+        collection = client.collection(_haal_firestore_collection())
+        for start in range(0, len(observaties), _FIRESTORE_BATCH_SIZE):
+            batch = client.batch()
+            for observatie in observaties[start:start + _FIRESTORE_BATCH_SIZE]:
+                batch.set(
+                    collection.document(),
+                    {**observatie, "created_at": firestore.SERVER_TIMESTAMP},
+                )
+            batch.commit()
+        return True
+    except Exception as exc:
+        _LOGGER.warning("Kon observaties niet migreren naar Firestore (%s).", type(exc).__name__)
+        return False
 
 
 def _laad_observaties() -> tuple[list, str]:
