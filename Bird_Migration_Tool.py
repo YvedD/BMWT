@@ -153,6 +153,8 @@ def _lees_optionele_secret(namen: tuple[str, ...], default: str = "") -> str:
             waarde_secret = str(waarde_secret).strip()
             if waarde_secret:
                 return waarde_secret
+
+    for naam in namen:
         waarde = os.environ.get(naam)
         if waarde:
             return waarde.strip()
@@ -211,8 +213,8 @@ def _sync_json_naar_github(bestandspad: Path, inhoud: str, commit_message: str) 
             return True, f"Online bewaard in `{repo}` op branch `{branch}`."
         melding = resp.json().get("message", f"HTTP {resp.status_code}")
         return False, f"GitHub-sync mislukt voor {rel_path}: {melding}"
-    except (requests.RequestException, ValueError):
-        _LOGGER.warning("GitHub-sync voor %s mislukte.", rel_path)
+    except (requests.RequestException, ValueError) as exc:
+        _LOGGER.warning("GitHub-sync voor %s mislukte (%s).", rel_path, type(exc).__name__)
         return False, (
             f"GitHub-sync mislukt voor {rel_path}. "
             "Controleer `github_token`, repository-instellingen en branch-configuratie."
