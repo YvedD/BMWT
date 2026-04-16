@@ -25,6 +25,14 @@ import altair as alt
 from astral import LocationInfo
 from astral.sun import sun
 
+try:
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+except ImportError:
+    firebase_admin = None
+    credentials = None
+    firestore = None
+
 _TF = TimezoneFinder()
 
 # ---------------------------------------------------------------------------
@@ -34,6 +42,8 @@ _SCORE_WEIGHTS_PATH = Path("data/migration/score_weights.json")
 _OBS_PATH = Path("data/migration/observations.json")
 _GITHUB_API_BASE = "https://api.github.com"
 _GITHUB_REPO_DEFAULT = "YvedD/BMWT"
+_FIRESTORE_APP_NAME = "bmwt-firestore"
+_FIRESTORE_COLLECTION_DEFAULT = "bmwt_observations"
 _LOGGER = logging.getLogger(__name__)
 
 # Standaardwaarden (worden gebruikt als het JSON-bestand ontbreekt)
@@ -161,6 +171,108 @@ def _lees_optionele_secret(namen: tuple[str, ...], default: str = "") -> str:
     return default
 
 
+def _lees_optionele_secret_mapping(namen: tuple[str, ...]) -> dict | None:
+    """Lees een optionele mapping uit Streamlit secrets of JSON environment variables."""
+    for naam in namen:
+        try:
+            waarde_secret = st.secrets.get(naam)
+        except (AttributeError, FileNotFoundError, KeyError, RuntimeError):
+            waarde_secret = None
+        if waarde_secret:
+            try:
+                mapping = dict(waarde_secret)
+            except (TypeError, ValueError):
+                mapping = None
+            if mapping:
+                return mapping
+
+    for naam in namen:
+        waarde = os.environ.get(naam)
+        if not waarde:
+            continue
+        try:
+            mapping = json.loads(waarde)
+        except json.JSONDecodeError:
+            _LOGGER.warning("Secret %s bevat geen geldige JSON mapping.", naam)
+            continue
+        if isinstance(mapping, dict) and mapping:
+            return mapping
+    return None
+
+
+def _normaliseer_service_account_info(info: dict) -> dict:
+    normalized = {str(key): value for key, value in info.items()}
+    private_key = normalized.get("private_key")
+    if private_key:
+        normalized["private_key"] = str(private_key).replace("\\n", "\n")
+    return normalized
+
+
+def _haal_firestore_service_account_info() -> dict | None:
+    raw_json = _lees_optionele_secret(("firebase_service_account_json", "FIREBASE_SERVICE_ACCOUNT_JSON"))
+    if raw_json:
+        try:
+            parsed = json.loads(raw_json)
+        except json.JSONDecodeError:
+            _LOGGER.warning("firebase_service_account_json bevat geen geldige JSON.")
+        else:
+            if isinstance(parsed, dict) and parsed:
+                return _normaliseer_service_account_info(parsed)
+
+    mapping = _lees_optionele_secret_mapping(("firebase_service_account", "FIREBASE_SERVICE_ACCOUNT"))
+    if mapping:
+        return _normaliseer_service_account_info(mapping)
+    return None
+
+
+@st.cache_resource(show_spinner=False)
+def _maak_firestore_client(service_account_json: str):
+    if firebase_admin is None or credentials is None or firestore is None:
+        return None, "Firestore dependency ontbreekt; installeer `firebase-admin`."
+    if not service_account_json:
+        return None, (
+            "Firestore is niet geconfigureerd. Voeg in Streamlit Cloud een secret "
+            "`firebase_service_account` of `firebase_service_account_json` toe."
+        )
+
+    try:
+        service_account_info = json.loads(service_account_json)
+    except json.JSONDecodeError:
+        return None, "Firestore service account is ongeldig geformatteerd."
+
+    try:
+        try:
+            app = firebase_admin.get_app(_FIRESTORE_APP_NAME)
+        except ValueError:
+            app = firebase_admin.initialize_app(
+                credentials.Certificate(_normaliseer_service_account_info(service_account_info)),
+                name=_FIRESTORE_APP_NAME,
+            )
+        return firestore.client(app=app), (
+            f"Firestore actief voor project `{service_account_info.get('project_id', 'onbekend')}`."
+        )
+    except Exception as exc:
+        _LOGGER.warning("Kon Firestore niet initialiseren (%s).", type(exc).__name__)
+        return None, "Kon Firestore niet initialiseren. Controleer je Firebase service-account secrets."
+
+
+def _haal_firestore_client():
+    info = _haal_firestore_service_account_info()
+    if not info:
+        return None, (
+            "Firestore is niet geconfigureerd. Voeg in Streamlit Cloud een secret "
+            "`firebase_service_account` of `firebase_service_account_json` toe."
+        )
+    return _maak_firestore_client(json.dumps(info, sort_keys=True))
+
+
+def _haal_firestore_collection() -> str:
+    return _lees_optionele_secret(
+        ("firestore_collection", "FIRESTORE_COLLECTION"),
+        default=_FIRESTORE_COLLECTION_DEFAULT,
+    )
+
+
 def _bepaal_github_branch(repo: str, headers: dict) -> str:
     branch = _lees_optionele_secret(("github_branch", "GITHUB_BRANCH", "GITHUB_TARGET_BRANCH"), default="")
     if branch:
@@ -229,22 +341,182 @@ def _sla_json_duurzaam_op(bestandspad: Path, payload: object, commit_message: st
     return _sync_json_naar_github(bestandspad, inhoud, commit_message)
 
 
-def _laad_observaties() -> list:
+def _sla_json_lokaal_op(bestandspad: Path, payload: object) -> None:
+    bestandspad.parent.mkdir(parents=True, exist_ok=True)
+    inhoud = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    bestandspad.write_text(inhoud, encoding="utf-8")
+
+
+def _normaliseer_observatie(observatie: dict) -> dict | None:
+    try:
+        datum = str(observatie.get("datum", "")).strip()
+        windrichting = str(observatie.get("windrichting", "")).strip()
+        beaufort = int(observatie.get("beaufort", 0))
+        temperatuur = float(observatie.get("temperatuur", 0.0))
+        neerslag_pct = float(observatie.get("neerslag_pct", 0.0))
+        kwaliteit = str(observatie.get("kwaliteit", "")).strip()
+        kwaliteit_score = float(observatie.get("kwaliteit_score", 0.0))
+        notitie = str(observatie.get("notitie", ""))
+    except (TypeError, ValueError):
+        return None
+
+    if not datum or not windrichting or beaufort <= 0 or not kwaliteit:
+        return None
+
+    return {
+        "datum": datum,
+        "windrichting": windrichting,
+        "beaufort": beaufort,
+        "temperatuur": temperatuur,
+        "neerslag_pct": neerslag_pct,
+        "kwaliteit": kwaliteit,
+        "kwaliteit_score": kwaliteit_score,
+        "notitie": notitie,
+    }
+
+
+def _laad_observaties_lokaal() -> list:
     try:
         if _OBS_PATH.exists():
             with open(_OBS_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+            if isinstance(data, list):
+                observaties = []
+                for item in data:
+                    if isinstance(item, dict):
+                        normalized = _normaliseer_observatie(item)
+                        if normalized:
+                            observaties.append(normalized)
+                return observaties
     except (OSError, json.JSONDecodeError) as exc:
         _LOGGER.warning("Kon observaties niet laden uit %s: %s", _OBS_PATH, exc)
     return []
 
 
-def _sla_observaties_op(obs: list) -> tuple[bool, str]:
-    return _sla_json_duurzaam_op(
+def _importeer_observaties_naar_firestore(client, observaties: list) -> bool:
+    if not observaties or firestore is None:
+        return False
+
+    collection = client.collection(_haal_firestore_collection())
+    for start in range(0, len(observaties), 400):
+        batch = client.batch()
+        for observatie in observaties[start:start + 400]:
+            batch.set(
+                collection.document(),
+                {**observatie, "created_at": firestore.SERVER_TIMESTAMP},
+            )
+        batch.commit()
+    return True
+
+
+def _laad_observaties() -> tuple[list, str]:
+    local_obs = _laad_observaties_lokaal()
+    client, firestore_msg = _haal_firestore_client()
+    collection_name = _haal_firestore_collection()
+
+    if client is None:
+        if local_obs:
+            return local_obs, f"⚠️ {firestore_msg} JSON/GitHub-fallback actief."
+        return [], f"⚠️ {firestore_msg}"
+
+    try:
+        firestore_obs = []
+        for doc in client.collection(collection_name).stream():
+            data = doc.to_dict() or {}
+            normalized = _normaliseer_observatie(data)
+            if normalized:
+                firestore_obs.append(normalized)
+
+        firestore_obs.sort(
+            key=lambda item: (
+                item.get("datum", ""),
+                item.get("windrichting", ""),
+                item.get("beaufort", 0),
+                item.get("temperatuur", 0.0),
+                item.get("kwaliteit_score", 0.0),
+            )
+        )
+
+        if firestore_obs:
+            _sla_json_lokaal_op(_OBS_PATH, firestore_obs)
+            return firestore_obs, f"☁️ Observaties geladen uit Firestore-collectie `{collection_name}`."
+
+        if local_obs and _importeer_observaties_naar_firestore(client, local_obs):
+            _sla_json_lokaal_op(_OBS_PATH, local_obs)
+            return local_obs, (
+                f"☁️ Firestore was leeg; {len(local_obs)} lokale observaties gemigreerd naar `{collection_name}`."
+            )
+
+        return [], f"☁️ Firestore is actief (`{collection_name}`), maar er zijn nog geen observaties opgeslagen."
+    except Exception as exc:
+        _LOGGER.warning("Kon observaties niet uit Firestore laden (%s).", type(exc).__name__)
+        if local_obs:
+            return local_obs, (
+                f"⚠️ Firestore-opslag `{collection_name}` is niet bereikbaar. JSON/GitHub-fallback gebruikt."
+            )
+        return [], f"⚠️ Firestore-opslag `{collection_name}` is niet bereikbaar."
+
+
+def _sla_observatie_op(observatie: dict, alle_observaties: list) -> tuple[bool, str]:
+    fallback_ok, fallback_msg = _sla_json_duurzaam_op(
         _OBS_PATH,
-        obs,
+        alle_observaties,
         commit_message="chore: update AI observations from Streamlit",
     )
+    client, firestore_msg = _haal_firestore_client()
+    collection_name = _haal_firestore_collection()
+
+    if client is None:
+        return False, f"{firestore_msg} Fallbackstatus: {fallback_msg}"
+
+    normalized = _normaliseer_observatie(observatie)
+    if normalized is None:
+        return False, "Observatie kon niet gevalideerd worden voor opslag."
+
+    try:
+        client.collection(collection_name).add(
+            {**normalized, "created_at": firestore.SERVER_TIMESTAMP}
+        )
+        return True, f"Opgeslagen in Firestore-collectie `{collection_name}`; lokale cache bijgewerkt."
+    except Exception as exc:
+        _LOGGER.warning("Kon observatie niet opslaan in Firestore (%s).", type(exc).__name__)
+        fallback_prefix = "Fallbackstatus"
+        if fallback_ok:
+            fallback_prefix = "GitHub/JSON-fallback"
+        return False, (
+            f"Firestore-opslag in `{collection_name}` mislukte. {fallback_prefix}: {fallback_msg}"
+        )
+
+
+def _wis_observaties() -> tuple[bool, str]:
+    fallback_ok, fallback_msg = _sla_json_duurzaam_op(
+        _OBS_PATH,
+        [],
+        commit_message="chore: clear AI observations from Streamlit",
+    )
+    client, firestore_msg = _haal_firestore_client()
+    collection_name = _haal_firestore_collection()
+
+    if client is None:
+        return False, f"{firestore_msg} Fallbackstatus: {fallback_msg}"
+
+    try:
+        docs = list(client.collection(collection_name).stream())
+        for start in range(0, len(docs), 400):
+            batch = client.batch()
+            for doc in docs[start:start + 400]:
+                batch.delete(doc.reference)
+            batch.commit()
+        return True, f"Firestore-collectie `{collection_name}` leeggemaakt; lokale cache bijgewerkt."
+    except Exception as exc:
+        _LOGGER.warning("Kon Firestore-observaties niet wissen (%s).", type(exc).__name__)
+        fallback_prefix = "Fallbackstatus"
+        if fallback_ok:
+            fallback_prefix = "GitHub/JSON-fallback"
+        return False, (
+            f"Firestore-collectie `{collection_name}` kon niet gewist worden. "
+            f"{fallback_prefix}: {fallback_msg}"
+        )
 
 
 # Laad configuratie bij het opstarten en bewaar in session_state
@@ -2799,7 +3071,9 @@ en zijn meteen actief bij het heropstarten van de applicatie.
         "te verbeteren op basis van echte ervaring."
     )
     if "observaties" not in st.session_state:
-        st.session_state.observaties = _laad_observaties()
+        st.session_state.observaties, st.session_state.observaties_status = _laad_observaties()
+    if st.session_state.get("observaties_status"):
+        st.caption(st.session_state.observaties_status)
 
     col_obs1, col_obs2, col_obs3, col_obs4 = st.columns(4)
     with col_obs1:
@@ -2843,7 +3117,8 @@ en zijn meteen actief bij het heropstarten van de applicatie.
             "notitie": obs_notitie,
         }
         st.session_state.observaties.append(nieuwe_obs)
-        sync_ok, sync_msg = _sla_observaties_op(st.session_state.observaties)
+        sync_ok, sync_msg = _sla_observatie_op(nieuwe_obs, st.session_state.observaties)
+        st.session_state.observaties_status = sync_msg
         st.success(f"✅ Observatie opgeslagen: {obs_richting} {obs_bf} Bf, {obs_temp}°C → {obs_kwaliteit}")
         if sync_ok:
             st.caption(f"☁️ {sync_msg}")
@@ -2858,7 +3133,8 @@ en zijn meteen actief bij het heropstarten van de applicatie.
 
             if st.button("🗑️ Alle observaties wissen", key="obs_clear"):
                 st.session_state.observaties = []
-                sync_ok, sync_msg = _sla_observaties_op([])
+                sync_ok, sync_msg = _wis_observaties()
+                st.session_state.observaties_status = sync_msg
                 st.info("Observaties gewist.")
                 if sync_ok:
                     st.caption(f"☁️ {sync_msg}")
