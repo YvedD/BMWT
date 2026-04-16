@@ -146,13 +146,13 @@ def _lees_optionele_secret(namen: tuple[str, ...], default: str = "") -> str:
     """Lees een optionele waarde uit Streamlit secrets of environment variables."""
     for naam in namen:
         try:
-            waarde_secret = st.secrets[naam]
+            waarde_secret = st.secrets.get(naam)
+        except (AttributeError, FileNotFoundError, KeyError, RuntimeError):
+            waarde_secret = None
+        if waarde_secret is not None:
+            waarde_secret = str(waarde_secret).strip()
             if waarde_secret:
-                return str(waarde_secret).strip()
-        except KeyError:
-            pass
-        except Exception:
-            _LOGGER.debug("Kon Streamlit secrets niet uitlezen; environment fallback wordt gebruikt.")
+                return waarde_secret
         waarde = os.environ.get(naam)
         if waarde:
             return waarde.strip()
@@ -211,8 +211,12 @@ def _sync_json_naar_github(bestandspad: Path, inhoud: str, commit_message: str) 
             return True, f"Online bewaard in `{repo}` op branch `{branch}`."
         melding = resp.json().get("message", f"HTTP {resp.status_code}")
         return False, f"GitHub-sync mislukt voor {rel_path}: {melding}"
-    except (requests.RequestException, ValueError) as exc:
-        return False, f"GitHub-sync mislukt voor {rel_path}: {exc}"
+    except (requests.RequestException, ValueError):
+        _LOGGER.warning("GitHub-sync voor %s mislukte.", rel_path)
+        return False, (
+            f"GitHub-sync mislukt voor {rel_path}. "
+            "Controleer `github_token`, repository-instellingen en branch-configuratie."
+        )
 
 
 def _sla_json_duurzaam_op(bestandspad: Path, payload: object, commit_message: str) -> tuple[bool, str]:
