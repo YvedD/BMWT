@@ -3,6 +3,7 @@ from geopy.geocoders import Nominatim, OpenCage
 import folium
 import base64
 import json
+import logging
 import requests
 from streamlit_folium import st_folium
 import pandas as pd
@@ -33,6 +34,7 @@ _SCORE_WEIGHTS_PATH = Path("data/migration/score_weights.json")
 _OBS_PATH = Path("data/migration/observations.json")
 _GITHUB_API_BASE = "https://api.github.com"
 _GITHUB_REPO_DEFAULT = "YvedD/BMWT"
+_LOGGER = logging.getLogger(__name__)
 
 # Standaardwaarden (worden gebruikt als het JSON-bestand ontbreekt)
 _STANDAARD_SCORE_GEWICHTEN: dict = {
@@ -144,10 +146,13 @@ def _lees_optionele_secret(*namen: str, default: str = "") -> str:
     """Lees een optionele waarde uit Streamlit secrets of environment variables."""
     for naam in namen:
         try:
-            if naam in st.secrets and st.secrets[naam]:
-                return str(st.secrets[naam]).strip()
-        except Exception:
+            waarde_secret = st.secrets[naam]
+            if waarde_secret:
+                return str(waarde_secret).strip()
+        except KeyError:
             pass
+        except Exception as exc:
+            _LOGGER.debug("Kon Streamlit secret '%s' niet lezen: %s", naam, exc)
         waarde = os.environ.get(naam)
         if waarde:
             return waarde.strip()
@@ -155,7 +160,7 @@ def _lees_optionele_secret(*namen: str, default: str = "") -> str:
 
 
 def _bepaal_github_branch(repo: str, headers: dict) -> str:
-    branch = _lees_optionele_secret("github_branch", "GITHUB_BRANCH", "GITHUB_TARGET_BRANCH")
+    branch = _lees_optionele_secret("github_branch", "GITHUB_BRANCH", "GITHUB_TARGET_BRANCH", default="")
     if branch:
         return branch
 
@@ -163,8 +168,8 @@ def _bepaal_github_branch(repo: str, headers: dict) -> str:
         resp = requests.get(f"{_GITHUB_API_BASE}/repos/{repo}", headers=headers, timeout=15)
         if resp.ok:
             return resp.json().get("default_branch", "main")
-    except requests.RequestException:
-        pass
+    except requests.RequestException as exc:
+        _LOGGER.warning("Kon default branch voor %s niet bepalen: %s", repo, exc)
     return "main"
 
 
@@ -223,8 +228,8 @@ def _laad_observaties() -> list:
         if _OBS_PATH.exists():
             with open(_OBS_PATH, "r", encoding="utf-8") as f:
                 return json.load(f)
-    except Exception:
-        pass
+    except (OSError, json.JSONDecodeError) as exc:
+        _LOGGER.warning("Kon observaties niet laden uit %s: %s", _OBS_PATH, exc)
     return []
 
 
