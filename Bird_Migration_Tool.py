@@ -44,6 +44,7 @@ _GITHUB_API_BASE = "https://api.github.com"
 _GITHUB_REPO_DEFAULT = "YvedD/BMWT"
 _FIRESTORE_APP_NAME = "bmwt-firestore"
 _FIRESTORE_COLLECTION_DEFAULT = "bmwt_observations"
+_FIRESTORE_BATCH_SIZE = 400
 _LOGGER = logging.getLogger(__name__)
 
 # Standaardwaarden (worden gebruikt als het JSON-bestand ontbreekt)
@@ -398,9 +399,9 @@ def _importeer_observaties_naar_firestore(client, observaties: list) -> bool:
         return False
 
     collection = client.collection(_haal_firestore_collection())
-    for start in range(0, len(observaties), 400):
+    for start in range(0, len(observaties), _FIRESTORE_BATCH_SIZE):
         batch = client.batch()
-        for observatie in observaties[start:start + 400]:
+        for observatie in observaties[start:start + _FIRESTORE_BATCH_SIZE]:
             batch.set(
                 collection.document(),
                 {**observatie, "created_at": firestore.SERVER_TIMESTAMP},
@@ -502,9 +503,9 @@ def _wis_observaties() -> tuple[bool, str]:
 
     try:
         docs = list(client.collection(collection_name).stream())
-        for start in range(0, len(docs), 400):
+        for start in range(0, len(docs), _FIRESTORE_BATCH_SIZE):
             batch = client.batch()
-            for doc in docs[start:start + 400]:
+            for doc in docs[start:start + _FIRESTORE_BATCH_SIZE]:
                 batch.delete(doc.reference)
             batch.commit()
         return True, f"Firestore-collectie `{collection_name}` leeggemaakt; lokale cache bijgewerkt."
