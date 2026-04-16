@@ -257,6 +257,7 @@ def _maak_firestore_client(service_account_json: str) -> tuple[object | None, st
         return None, "Kon Firestore niet initialiseren. Controleer je Firebase service-account secrets."
 
 def _haal_firestore_client() -> tuple[object | None, str]:
+    """Geef de Firestore client en een statusmelding terug."""
     info = _haal_firestore_service_account_info()
     if not info:
         return None, (
@@ -348,11 +349,13 @@ def _sla_json_lokaal_op(bestandspad: Path, payload: object) -> None:
 
 
 def _iter_firestore_batches(items: list):
+    """Yield opeenvolgende batches voor Firestore batch-operaties."""
     for start in range(0, len(items), _FIRESTORE_BATCH_SIZE):
         yield items[start:start + _FIRESTORE_BATCH_SIZE]
 
 
 def _fallback_status_label(sync_ok: bool) -> str:
+    """Geef de juiste fallbackstatus terug voor UI-meldingen."""
     return "GitHub/JSON-fallback" if sync_ok else "Fallbackstatus"
 
 
