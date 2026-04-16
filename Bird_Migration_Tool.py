@@ -227,7 +227,7 @@ def _haal_firestore_service_account_info() -> dict | None:
 
 
 @st.cache_resource(show_spinner=False)
-def _maak_firestore_client(service_account_json: str):
+def _maak_firestore_client(service_account_json: str) -> tuple[object | None, str]:
     if firebase_admin is None or credentials is None or firestore is None:
         return None, "Firestore dependency kon niet geladen worden; controleer of `firebase-admin` correct is geïnstalleerd."
     if not service_account_json:
@@ -256,8 +256,7 @@ def _maak_firestore_client(service_account_json: str):
         _LOGGER.warning("Kon Firestore niet initialiseren (%s).", type(exc).__name__)
         return None, "Kon Firestore niet initialiseren. Controleer je Firebase service-account secrets."
 
-
-def _haal_firestore_client():
+def _haal_firestore_client() -> tuple[object | None, str]:
     info = _haal_firestore_service_account_info()
     if not info:
         return None, (
@@ -348,6 +347,15 @@ def _sla_json_lokaal_op(bestandspad: Path, payload: object) -> None:
     bestandspad.write_text(inhoud, encoding="utf-8")
 
 
+def _iter_firestore_batches(items: list):
+    for start in range(0, len(items), _FIRESTORE_BATCH_SIZE):
+        yield items[start:start + _FIRESTORE_BATCH_SIZE]
+
+
+def _fallback_status_label(sync_ok: bool) -> str:
+    return "GitHub/JSON-fallback" if sync_ok else "Fallbackstatus"
+
+
 def _normaliseer_observatie(observatie: dict) -> dict | None:
     try:
         datum = str(observatie.get("datum", "")).strip()
@@ -359,9 +367,11 @@ def _normaliseer_observatie(observatie: dict) -> dict | None:
         kwaliteit_score = float(observatie.get("kwaliteit_score", 0.0))
         notitie = str(observatie.get("notitie", ""))
     except (TypeError, ValueError):
+        _LOGGER.debug("Observatie kon niet genormaliseerd worden: %s", observatie)
         return None
 
     if not datum or not windrichting or beaufort < 0 or not kwaliteit:
+        _LOGGER.debug("Observatie mist verplichte velden: %s", observatie)
         return None
 
     return {
@@ -400,9 +410,9 @@ def _importeer_observaties_naar_firestore(client, observaties: list) -> bool:
 
     try:
         collection = client.collection(_haal_firestore_collection())
-        for start in range(0, len(observaties), _FIRESTORE_BATCH_SIZE):
+        for batch_items in _iter_firestore_batches(observaties):
             batch = client.batch()
-            for observatie in observaties[start:start + _FIRESTORE_BATCH_SIZE]:
+            for observatie in batch_items:
                 batch.set(
                     collection.document(),
                     {**observatie, "created_at": firestore.SERVER_TIMESTAMP},
@@ -485,9 +495,7 @@ def _sla_observatie_op(observatie: dict, alle_observaties: list) -> tuple[bool, 
         return True, f"Opgeslagen in Firestore-collectie `{collection_name}`; lokale cache bijgewerkt."
     except Exception as exc:
         _LOGGER.warning("Kon observatie niet opslaan in Firestore (%s).", type(exc).__name__)
-        fallback_prefix = "Fallbackstatus"
-        if fallback_ok:
-            fallback_prefix = "GitHub/JSON-fallback"
+        fallback_prefix = _fallback_status_label(fallback_ok)
         return False, (
             f"Firestore-opslag in `{collection_name}` mislukte. {fallback_prefix}: {fallback_msg}"
         )
@@ -507,17 +515,15 @@ def _wis_observaties() -> tuple[bool, str]:
 
     try:
         docs = list(client.collection(collection_name).stream())
-        for start in range(0, len(docs), _FIRESTORE_BATCH_SIZE):
+        for batch_docs in _iter_firestore_batches(docs):
             batch = client.batch()
-            for doc in docs[start:start + _FIRESTORE_BATCH_SIZE]:
+            for doc in batch_docs:
                 batch.delete(doc.reference)
             batch.commit()
         return True, f"Firestore-collectie `{collection_name}` leeggemaakt; lokale cache bijgewerkt."
     except Exception as exc:
         _LOGGER.warning("Kon Firestore-observaties niet wissen (%s).", type(exc).__name__)
-        fallback_prefix = "Fallbackstatus"
-        if fallback_ok:
-            fallback_prefix = "GitHub/JSON-fallback"
+        fallback_prefix = _fallback_status_label(fallback_ok)
         return False, (
             f"Firestore-collectie `{collection_name}` kon niet gewist worden. "
             f"{fallback_prefix}: {fallback_msg}"
