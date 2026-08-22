@@ -1801,7 +1801,10 @@ with tabs[1]:
 
         if weather_data_forecast:
             # Toon de dagelijkse voorspelling
-            hourly_data = weather_data_forecast['hourly']
+            hourly_data = weather_data_forecast.get('hourly', {})
+            if not isinstance(hourly_data, dict):
+                st.warning("De API-gegevens voor de uurlijkse voorspelling zijn ongeldig.")
+                hourly_data = {}
 
             # Functie om windrichting te converteren naar een compasrichting
             def richting_to_compas(graden):
@@ -1809,19 +1812,25 @@ with tabs[1]:
                 index = int((graden % 360) / 22.5)  # Elke richting dekt 22.5 graden
                 return richtingen[index]
 
+            def veilige_float(waarde, standaard=0.0):
+                try:
+                    return float(waarde)
+                except (TypeError, ValueError):
+                    return standaard
+
             # Zet de data om naar een DataFrame
             hourly_df = pd.DataFrame({
-                'Time': pd.to_datetime(hourly_data['time']),
-                'Temperatuur (°C)': [f"{temp:.1f} °C" for temp in hourly_data['temperature_2m']],
-                'Neerslag (mm)': [f"{rain:.1f}mm" for rain in hourly_data['precipitation']],
-                'Bewolking Laag (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_low']],
-                'Bewolking Middel (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_mid']],
-                'Bewolking Hoog (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_high']],
-                'Bewolking (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover']],
-                'Wind Richting': [richting_to_compas(dir) for dir in hourly_data['wind_direction_10m']],
-                'Windkracht op 10m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_10m']],
-                'Windkracht op 80m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_80m']],
-                'Zichtbaarheid (km)': [f"{int(vis / 1000)} km" for vis in hourly_data['visibility']]
+                'Time': pd.to_datetime(hourly_data.get('time', []), errors='coerce'),
+                'Temperatuur (°C)': [f"{veilige_float(temp):.1f} °C" for temp in hourly_data.get('temperature_2m', [])],
+                'Neerslag (mm)': [f"{veilige_float(rain):.1f}mm" for rain in hourly_data.get('precipitation', [])],
+                'Bewolking Laag (%)': [f"{veilige_float(cloud):.0f}%" for cloud in hourly_data.get('cloud_cover_low', [])],
+                'Bewolking Middel (%)': [f"{veilige_float(cloud):.0f}%" for cloud in hourly_data.get('cloud_cover_mid', [])],
+                'Bewolking Hoog (%)': [f"{veilige_float(cloud):.0f}%" for cloud in hourly_data.get('cloud_cover_high', [])],
+                'Bewolking (%)': [f"{veilige_float(cloud):.0f}%" for cloud in hourly_data.get('cloud_cover', [])],
+                'Wind Richting': [richting_to_compas(veilige_float(richting, 0.0)) for richting in hourly_data.get('wind_direction_10m', [])],
+                'Windkracht op 10m (Bf)': [kmh_naar_beaufort(veilige_float(snelheid, 0.0)) for snelheid in hourly_data.get('wind_speed_10m', [])],
+                'Windkracht op 80m (Bf)': [kmh_naar_beaufort(veilige_float(snelheid, 0.0)) for snelheid in hourly_data.get('wind_speed_80m', [])],
+                'Zichtbaarheid (km)': [f"{int(veilige_float(vis, 0.0) / 1000)} km" for vis in hourly_data.get('visibility', [])]
             })
 
             # Voeg datum en uur toe
