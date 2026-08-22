@@ -1925,7 +1925,7 @@ with tabs[1]:
                                 kleur = 'background-color: #ffe853'
                             elif richting == 'OZO':
                                 kleur = 'background-color: #ff4d00'
-                            if richting == 'ZO':
+                            elif richting == 'ZO':
                                 kleur = 'background-color: #ff4d00'
                             elif richting == 'ZZO':
                                 kleur = 'background-color: #ff4d00'
