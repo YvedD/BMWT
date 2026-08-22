@@ -1801,7 +1801,10 @@ with tabs[1]:
 
         if weather_data_forecast:
             # Toon de dagelijkse voorspelling
-            hourly_data = weather_data_forecast['hourly']
+            hourly_data = weather_data_forecast.get('hourly', {})
+            if not isinstance(hourly_data, dict):
+                st.warning("De API-gegevens voor de uurlijkse voorspelling zijn ongeldig.")
+                hourly_data = {}
 
             # Functie om windrichting te converteren naar een compasrichting
             def richting_to_compas(graden):
@@ -1809,91 +1812,148 @@ with tabs[1]:
                 index = int((graden % 360) / 22.5)  # Elke richting dekt 22.5 graden
                 return richtingen[index]
 
-            # Zet de data om naar een DataFrame
-            hourly_df = pd.DataFrame({
-                'Time': pd.to_datetime(hourly_data['time']),
-                'Temperatuur (°C)': [f"{temp:.1f} °C" for temp in hourly_data['temperature_2m']],
-                'Neerslag (mm)': [f"{rain:.1f}mm" for rain in hourly_data['precipitation']],
-                'Bewolking Laag (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_low']],
-                'Bewolking Middel (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_mid']],
-                'Bewolking Hoog (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover_high']],
-                'Bewolking (%)': [f"{cloud:.0f}%" for cloud in hourly_data['cloud_cover']],
-                'Wind Richting': [richting_to_compas(dir) for dir in hourly_data['wind_direction_10m']],
-                'Windkracht op 10m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_10m']],
-                'Windkracht op 80m (Bf)': [kmh_naar_beaufort(snelheid) for snelheid in hourly_data['wind_speed_80m']],
-                'Zichtbaarheid (km)': [f"{int(vis / 1000)} km" for vis in hourly_data['visibility']]
-            })
+            def veilige_float(waarde, standaard=float("nan")):
+                try:
+                    return float(waarde)
+                except (TypeError, ValueError):
+                    return standaard
 
-            # Voeg datum en uur toe
-            hourly_df['Datum'] = hourly_df['Time'].dt.date
-            hourly_df['Uur'] = hourly_df['Time'].dt.strftime('%H:%M')
+            def format_float_waarde(waarde, precisie=1, suffix=""):
+                waarde = veilige_float(waarde)
+                if pd.isna(waarde):
+                    return "N/A"
+                return f"{waarde:.{precisie}f}{suffix}"
 
-            # Kolomtitels aanpassen met iconen
-            hourly_df = hourly_df.rename(columns={
-                'Temperatuur (°C)': '🌡️ °C',
-                'Neerslag (mm)': '🌧️ mm',
-                'Bewolking Laag (%)': '☁️@Low %',
-                'Bewolking Middel (%)': '☁️@Mid %',
-                'Bewolking Hoog (%)': '☁️@High %',
-                'Bewolking (%)': '☁️@tot %',
-                'Wind Richting': '🧭',
-                'Windkracht op 10m (Bf)': '💨@10m',
-                'Windkracht op 80m (Bf)': '💨@80m',
-                'Zichtbaarheid (km)': '👁️ km'
-            })
+            def format_windrichting(waarde):
+                waarde = veilige_float(waarde)
+                if pd.isna(waarde):
+                    return "N/A"
+                return richting_to_compas(waarde)
 
-            # Streamlit Titel
-            st.title("Weergegevens per Uur")
+            def format_beaufort(waarde):
+                waarde = veilige_float(waarde)
+                if pd.isna(waarde):
+                    return "N/A"
+                return kmh_naar_beaufort(waarde)
 
-            # Multiselect voor kolommen
-            beschikbare_kolommen = [col for col in hourly_df.columns if col not in ['Datum', 'Uur']]
-            geselecteerde_kolommen = st.multiselect(
-                "Selecteer de kolommen die je wilt zien (en in welke volgorde)",
-                beschikbare_kolommen,
-                default=beschikbare_kolommen
-            )
+            def veilige_zichtbaarheid(waarde):
+                try:
+                    waarde = float(waarde)
+                    if pd.isna(waarde):
+                        return "N/A"
+                    return f"{max(0.0, waarde) / 1000:.1f} km"
+                except (TypeError, ValueError):
+                    return "N/A"
 
-            if geselecteerde_kolommen:
-                geselecteerde_kolommen = ['Uur'] + geselecteerde_kolommen
-                ordered_df = hourly_df[['Datum'] + geselecteerde_kolommen].copy()
+            def als_lijst(waarden):
+                if waarden is None:
+                    return []
+                if isinstance(waarden, list):
+                    return waarden
+                if isinstance(waarden, tuple):
+                    return list(waarden)
+                return [waarden]
 
-                def highlight_windrichting(rij):
-                    kleur = ''
-                    richting = rij.get('🧭')
+            def vul_lijst(waarden, lengte, vulwaarde=None):
+                lijst = als_lijst(waarden)
+                if len(lijst) < lengte:
+                    lijst = lijst + [vulwaarde] * (lengte - len(lijst))
+                return lijst[:lengte]
 
-                    if richting == 'NNO':
-                        kleur = 'background-color: #e0ffb2'
-                    elif richting == 'NO':
-                        kleur = 'background-color: #ffde7f'
-                    elif richting == 'ONO':
-                        kleur = 'background-color: #fff671'
-                    elif richting == 'O':
-                        kleur = 'background-color: #ffe853'
-                    elif richting == 'OZO':
-                        kleur = 'background-color: #ff4d00'
-                    if richting == 'ZO':
-                        kleur = 'background-color: #ff4d00'
-                    elif richting == 'ZZO':
-                        kleur = 'background-color: #ff4d00'
-                    elif richting == 'Z':
-                        kleur = 'background-color: #ffe853'
-                    elif richting == 'ZZW':
-                        kleur = 'background-color: #e8ff7f'
-                    elif richting == 'ZW':
-                        kleur = 'background-color: #e0ffb2'
+            referentie_lengte = len(als_lijst(hourly_data.get('time', [])))
 
-                    if kleur:
-                        return [kleur] * len(rij)
-                    else:
-                        return [''] * len(rij)
-
-                # Toon per dag gegroepeerd
-                for day, group in ordered_df.groupby('Datum'):
-                    st.write(f"### **{day}**")
-                    styled_group = group.drop(columns='Datum').style.apply(highlight_windrichting, axis=1)
-                    st.dataframe(styled_group, use_container_width=True)
+            if referentie_lengte == 0:
+                st.warning("De API-gegevens voor de uurlijkse voorspelling bevatten geen geldige tijdstippen.")
             else:
-                st.write("Selecteer ten minste één kolom om te tonen.")
+                # Zet de data om naar een DataFrame
+                hourly_df = pd.DataFrame({
+                    'Time': pd.to_datetime(vul_lijst(hourly_data.get('time', []), referentie_lengte), errors='coerce'),
+                    'Temperatuur (°C)': [format_float_waarde(temp, 1, " °C") for temp in vul_lijst(hourly_data.get('temperature_2m', []), referentie_lengte)],
+                    'Neerslag (mm)': [format_float_waarde(rain, 1, "mm") for rain in vul_lijst(hourly_data.get('precipitation', []), referentie_lengte)],
+                    'Bewolking Laag (%)': [format_float_waarde(cloud, 0, "%") for cloud in vul_lijst(hourly_data.get('cloud_cover_low', []), referentie_lengte)],
+                    'Bewolking Middel (%)': [format_float_waarde(cloud, 0, "%") for cloud in vul_lijst(hourly_data.get('cloud_cover_mid', []), referentie_lengte)],
+                    'Bewolking Hoog (%)': [format_float_waarde(cloud, 0, "%") for cloud in vul_lijst(hourly_data.get('cloud_cover_high', []), referentie_lengte)],
+                    'Bewolking (%)': [format_float_waarde(cloud, 0, "%") for cloud in vul_lijst(hourly_data.get('cloud_cover', []), referentie_lengte)],
+                    'Wind Richting': [format_windrichting(richting) for richting in vul_lijst(hourly_data.get('wind_direction_10m', []), referentie_lengte)],
+                    'Windkracht op 10m (Bf)': [format_beaufort(snelheid) for snelheid in vul_lijst(hourly_data.get('wind_speed_10m', []), referentie_lengte)],
+                    'Windkracht op 80m (Bf)': [format_beaufort(snelheid) for snelheid in vul_lijst(hourly_data.get('wind_speed_80m', []), referentie_lengte)],
+                    'Zichtbaarheid (km)': [veilige_zichtbaarheid(vis) for vis in vul_lijst(hourly_data.get('visibility', []), referentie_lengte)]
+                })
+
+                hourly_df = hourly_df.dropna(subset=['Time']).reset_index(drop=True)
+                if hourly_df.empty:
+                    st.warning("De uurlijkse voorspelling bevat geen complete rijen met tijdstippen.")
+                else:
+                    # Voeg datum en uur toe
+                    hourly_df['Datum'] = hourly_df['Time'].dt.date
+                    hourly_df['Uur'] = hourly_df['Time'].dt.strftime('%H:%M')
+
+                    # Kolomtitels aanpassen met iconen
+                    hourly_df = hourly_df.rename(columns={
+                        'Temperatuur (°C)': '🌡️ °C',
+                        'Neerslag (mm)': '🌧️ mm',
+                        'Bewolking Laag (%)': '☁️@Low %',
+                        'Bewolking Middel (%)': '☁️@Mid %',
+                        'Bewolking Hoog (%)': '☁️@High %',
+                        'Bewolking (%)': '☁️@tot %',
+                        'Wind Richting': '🧭',
+                        'Windkracht op 10m (Bf)': '💨@10m',
+                        'Windkracht op 80m (Bf)': '💨@80m',
+                        'Zichtbaarheid (km)': '👁️ km'
+                    })
+
+                    # Streamlit Titel
+                    st.title("Weergegevens per Uur")
+
+                    # Multiselect voor kolommen
+                    beschikbare_kolommen = [col for col in hourly_df.columns if col not in ['Time', 'Datum', 'Uur']]
+                    geselecteerde_kolommen = st.multiselect(
+                        "Selecteer de kolommen die je wilt zien (en in welke volgorde)",
+                        beschikbare_kolommen,
+                        default=beschikbare_kolommen
+                    )
+
+                    if geselecteerde_kolommen:
+                        geselecteerde_kolommen = ['Uur'] + geselecteerde_kolommen
+                        ordered_df = hourly_df[['Datum'] + geselecteerde_kolommen].copy()
+
+                        def highlight_windrichting(rij):
+                            kleur = ''
+                            richting = rij.get('🧭')
+
+                            if richting == 'NNO':
+                                kleur = 'background-color: #e0ffb2'
+                            elif richting == 'NO':
+                                kleur = 'background-color: #ffde7f'
+                            elif richting == 'ONO':
+                                kleur = 'background-color: #fff671'
+                            elif richting == 'O':
+                                kleur = 'background-color: #ffe853'
+                            elif richting == 'OZO':
+                                kleur = 'background-color: #ff4d00'
+                            elif richting == 'ZO':
+                                kleur = 'background-color: #ff4d00'
+                            elif richting == 'ZZO':
+                                kleur = 'background-color: #ff4d00'
+                            elif richting == 'Z':
+                                kleur = 'background-color: #ffe853'
+                            elif richting == 'ZZW':
+                                kleur = 'background-color: #e8ff7f'
+                            elif richting == 'ZW':
+                                kleur = 'background-color: #e0ffb2'
+
+                            if kleur:
+                                return [kleur] * len(rij)
+                            else:
+                                return [''] * len(rij)
+
+                        # Toon per dag gegroepeerd
+                        for day, group in ordered_df.groupby('Datum'):
+                            st.write(f"### **{day}**")
+                            styled_group = group.drop(columns='Datum').style.apply(highlight_windrichting, axis=1)
+                            st.dataframe(styled_group, use_container_width=True)
+                    else:
+                        st.write("Selecteer ten minste één kolom om te tonen.")
 
 
 with tabs[2]:
