@@ -1838,7 +1838,10 @@ with tabs[1]:
 
             def veilige_zichtbaarheid(waarde):
                 try:
-                    return f"{max(0.0, float(waarde)) / 1000:.0f} km"
+                    waarde = float(waarde)
+                    if pd.isna(waarde):
+                        return "N/A"
+                    return f"{max(0.0, waarde) / 1000:.0f} km"
                 except (TypeError, ValueError):
                     return "N/A"
 
