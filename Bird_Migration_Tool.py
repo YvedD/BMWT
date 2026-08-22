@@ -1841,7 +1841,7 @@ with tabs[1]:
                     waarde = float(waarde)
                     if pd.isna(waarde):
                         return "N/A"
-                    return f"{max(0.0, waarde) / 1000:.0f} km"
+                    return f"{max(0.0, waarde) / 1000:.1f} km"
                 except (TypeError, ValueError):
                     return "N/A"
 
