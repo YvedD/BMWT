@@ -1918,7 +1918,7 @@ with tabs[1]:
                     st.title("Weergegevens per Uur")
 
                     # Multiselect voor kolommen
-                    beschikbare_kolommen = [col for col in hourly_df.columns if col not in ['Datum', 'Uur']]
+                    beschikbare_kolommen = [col for col in hourly_df.columns if col not in ['Time', 'Datum', 'Uur']]
                     geselecteerde_kolommen = st.multiselect(
                         "Selecteer de kolommen die je wilt zien (en in welke volgorde)",
                         beschikbare_kolommen,
