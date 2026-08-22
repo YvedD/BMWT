@@ -1818,6 +1818,12 @@ with tabs[1]:
                 except (TypeError, ValueError):
                     return standaard
 
+            def veilige_zichtbaarheid(waarde):
+                try:
+                    return f"{max(0.0, float(waarde)) / 1000:.0f} km"
+                except (TypeError, ValueError):
+                    return "N/A"
+
             # Zet de data om naar een DataFrame
             hourly_df = pd.DataFrame({
                 'Time': pd.to_datetime(hourly_data.get('time', []), errors='coerce'),
@@ -1830,7 +1836,7 @@ with tabs[1]:
                 'Wind Richting': [richting_to_compas(veilige_float(richting, 0.0)) for richting in hourly_data.get('wind_direction_10m', [])],
                 'Windkracht op 10m (Bf)': [kmh_naar_beaufort(veilige_float(snelheid, 0.0)) for snelheid in hourly_data.get('wind_speed_10m', [])],
                 'Windkracht op 80m (Bf)': [kmh_naar_beaufort(veilige_float(snelheid, 0.0)) for snelheid in hourly_data.get('wind_speed_80m', [])],
-                'Zichtbaarheid (km)': [f"{int(veilige_float(vis, 0.0) / 1000)} km" for vis in hourly_data.get('visibility', [])]
+                'Zichtbaarheid (km)': [veilige_zichtbaarheid(vis) for vis in hourly_data.get('visibility', [])]
             })
 
             # Voeg datum en uur toe
