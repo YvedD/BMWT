@@ -1824,19 +1824,51 @@ with tabs[1]:
                 except (TypeError, ValueError):
                     return "N/A"
 
+            def als_lijst(waarden):
+                if waarden is None:
+                    return []
+                if isinstance(waarden, list):
+                    return waarden
+                if isinstance(waarden, tuple):
+                    return list(waarden)
+                return [waarden]
+
+            def vul_lijst(waarden, lengte, vulwaarde=None):
+                lijst = als_lijst(waarden)
+                if len(lijst) < lengte:
+                    lijst = lijst + [vulwaarde] * (lengte - len(lijst))
+                return lijst[:lengte]
+
+            referentie_lengte = max(
+                [len(als_lijst(hourly_data.get(sleutel))) for sleutel in (
+                    'time',
+                    'temperature_2m',
+                    'precipitation',
+                    'cloud_cover_low',
+                    'cloud_cover_mid',
+                    'cloud_cover_high',
+                    'cloud_cover',
+                    'wind_direction_10m',
+                    'wind_speed_10m',
+                    'wind_speed_80m',
+                    'visibility',
+                )],
+                default=0,
+            )
+
             # Zet de data om naar een DataFrame
             hourly_df = pd.DataFrame({
-                'Time': pd.to_datetime(hourly_data.get('time', []), errors='coerce'),
-                'Temperatuur (°C)': [f"{veilige_float(temp):.1f} °C" for temp in hourly_data.get('temperature_2m', [])],
-                'Neerslag (mm)': [f"{veilige_float(rain):.1f}mm" for rain in hourly_data.get('precipitation', [])],
-                'Bewolking Laag (%)': [f"{veilige_float(cloud):.0f}%" for cloud in hourly_data.get('cloud_cover_low', [])],
-                'Bewolking Middel (%)': [f"{veilige_float(cloud):.0f}%" for cloud in hourly_data.get('cloud_cover_mid', [])],
-                'Bewolking Hoog (%)': [f"{veilige_float(cloud):.0f}%" for cloud in hourly_data.get('cloud_cover_high', [])],
-                'Bewolking (%)': [f"{veilige_float(cloud):.0f}%" for cloud in hourly_data.get('cloud_cover', [])],
-                'Wind Richting': [richting_to_compas(veilige_float(richting, 0.0)) for richting in hourly_data.get('wind_direction_10m', [])],
-                'Windkracht op 10m (Bf)': [kmh_naar_beaufort(veilige_float(snelheid, 0.0)) for snelheid in hourly_data.get('wind_speed_10m', [])],
-                'Windkracht op 80m (Bf)': [kmh_naar_beaufort(veilige_float(snelheid, 0.0)) for snelheid in hourly_data.get('wind_speed_80m', [])],
-                'Zichtbaarheid (km)': [veilige_zichtbaarheid(vis) for vis in hourly_data.get('visibility', [])]
+                'Time': pd.to_datetime(vul_lijst(hourly_data.get('time', []), referentie_lengte), errors='coerce'),
+                'Temperatuur (°C)': [f"{veilige_float(temp):.1f} °C" for temp in vul_lijst(hourly_data.get('temperature_2m', []), referentie_lengte)],
+                'Neerslag (mm)': [f"{veilige_float(rain):.1f}mm" for rain in vul_lijst(hourly_data.get('precipitation', []), referentie_lengte)],
+                'Bewolking Laag (%)': [f"{veilige_float(cloud):.0f}%" for cloud in vul_lijst(hourly_data.get('cloud_cover_low', []), referentie_lengte)],
+                'Bewolking Middel (%)': [f"{veilige_float(cloud):.0f}%" for cloud in vul_lijst(hourly_data.get('cloud_cover_mid', []), referentie_lengte)],
+                'Bewolking Hoog (%)': [f"{veilige_float(cloud):.0f}%" for cloud in vul_lijst(hourly_data.get('cloud_cover_high', []), referentie_lengte)],
+                'Bewolking (%)': [f"{veilige_float(cloud):.0f}%" for cloud in vul_lijst(hourly_data.get('cloud_cover', []), referentie_lengte)],
+                'Wind Richting': [richting_to_compas(veilige_float(richting, 0.0)) for richting in vul_lijst(hourly_data.get('wind_direction_10m', []), referentie_lengte)],
+                'Windkracht op 10m (Bf)': [kmh_naar_beaufort(veilige_float(snelheid, 0.0)) for snelheid in vul_lijst(hourly_data.get('wind_speed_10m', []), referentie_lengte)],
+                'Windkracht op 80m (Bf)': [kmh_naar_beaufort(veilige_float(snelheid, 0.0)) for snelheid in vul_lijst(hourly_data.get('wind_speed_80m', []), referentie_lengte)],
+                'Zichtbaarheid (km)': [veilige_zichtbaarheid(vis) for vis in vul_lijst(hourly_data.get('visibility', []), referentie_lengte)]
             })
 
             # Voeg datum en uur toe
