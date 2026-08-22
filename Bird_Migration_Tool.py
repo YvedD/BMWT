@@ -1860,22 +1860,7 @@ with tabs[1]:
                     lijst = lijst + [vulwaarde] * (lengte - len(lijst))
                 return lijst[:lengte]
 
-            referentie_lengte = max(
-                (len(als_lijst(hourly_data.get(sleutel))) for sleutel in (
-                    'time',
-                    'temperature_2m',
-                    'precipitation',
-                    'cloud_cover_low',
-                    'cloud_cover_mid',
-                    'cloud_cover_high',
-                    'cloud_cover',
-                    'wind_direction_10m',
-                    'wind_speed_10m',
-                    'wind_speed_80m',
-                    'visibility',
-                )),
-                default=0,
-            )
+            referentie_lengte = len(als_lijst(hourly_data.get('time', [])))
 
             if referentie_lengte == 0:
                 st.warning("De API-gegevens voor de uurlijkse voorspelling bevatten geen geldige tijdstippen.")
