@@ -1861,7 +1861,7 @@ with tabs[1]:
                 return lijst[:lengte]
 
             referentie_lengte = max(
-                [len(als_lijst(hourly_data.get(sleutel))) for sleutel in (
+                (len(als_lijst(hourly_data.get(sleutel))) for sleutel in (
                     'time',
                     'temperature_2m',
                     'precipitation',
@@ -1873,7 +1873,7 @@ with tabs[1]:
                     'wind_speed_10m',
                     'wind_speed_80m',
                     'visibility',
-                )],
+                )),
                 default=0,
             )
 
